@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* React Flow dark mode support */
+.react-flow__background {
+  background-color: #f9fafb;
+}
+
+.dark .react-flow__background {
+  background-color: #111827;
+}
+
+.react-flow__controls button {
+  background-color: white;
+  border-color: #e5e7eb;
+}
+
+.dark .react-flow__controls button {
+  background-color: #1f2937;
+  border-color: #374151;
+  color: #d1d5db;
+}
+
+.react-flow__minimap {
+  background-color: #f3f4f6;
+}
+
+.dark .react-flow__minimap {
+  background-color: #1f2937;
+}

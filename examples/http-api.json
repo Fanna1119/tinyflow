@@ -1,0 +1,72 @@
+{
+  "id": "example-http-api",
+  "name": "HTTP API Workflow",
+  "description": "Fetches data from an API and processes it",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {},
+      "position": { "x": 100, "y": 150 }
+    },
+    {
+      "id": "fetch-todo",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/todos/1",
+        "outputKey": "todo"
+      },
+      "position": { "x": 300, "y": 150 }
+    },
+    {
+      "id": "extract-title",
+      "functionId": "transform.map",
+      "params": {
+        "inputKey": "todo",
+        "path": "title",
+        "outputKey": "todoTitle"
+      },
+      "position": { "x": 500, "y": 150 }
+    },
+    {
+      "id": "format-message",
+      "functionId": "transform.template",
+      "params": {
+        "template": "Todo item: {{todoTitle}}",
+        "outputKey": "message"
+      },
+      "position": { "x": 700, "y": 150 }
+    },
+    {
+      "id": "log-message",
+      "functionId": "core.log",
+      "params": {
+        "key": "message"
+      },
+      "position": { "x": 900, "y": 150 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "message"
+      },
+      "position": { "x": 1100, "y": 150 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "fetch-todo", "action": "default" },
+    { "from": "fetch-todo", "to": "extract-title", "action": "success" },
+    { "from": "extract-title", "to": "format-message", "action": "default" },
+    { "from": "format-message", "to": "log-message", "action": "default" },
+    { "from": "log-message", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "author": "TinyFlow",
+    "tags": ["example", "http", "api"]
+  }
+}

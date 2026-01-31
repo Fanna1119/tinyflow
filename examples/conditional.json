@@ -1,0 +1,86 @@
+{
+  "id": "example-conditional",
+  "name": "Conditional Workflow",
+  "description": "Demonstrates conditional branching in workflows",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "input": { "score": 75 }
+      },
+      "position": { "x": 100, "y": 200 }
+    },
+    {
+      "id": "set-score",
+      "functionId": "transform.map",
+      "params": {
+        "inputKey": "input",
+        "path": "score",
+        "outputKey": "score"
+      },
+      "position": { "x": 300, "y": 200 }
+    },
+    {
+      "id": "check-passing",
+      "functionId": "control.condition",
+      "params": {
+        "leftKey": "score",
+        "operator": "gte",
+        "rightValue": 60
+      },
+      "position": { "x": 500, "y": 200 }
+    },
+    {
+      "id": "set-passed",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "result",
+        "value": { "status": "passed", "message": "Congratulations!" }
+      },
+      "position": { "x": 700, "y": 100 }
+    },
+    {
+      "id": "set-failed",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "result",
+        "value": { "status": "failed", "message": "Try again!" }
+      },
+      "position": { "x": 700, "y": 300 }
+    },
+    {
+      "id": "log-result",
+      "functionId": "core.log",
+      "params": {
+        "key": "result"
+      },
+      "position": { "x": 900, "y": 200 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "result"
+      },
+      "position": { "x": 1100, "y": 200 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "set-score", "action": "default" },
+    { "from": "set-score", "to": "check-passing", "action": "default" },
+    { "from": "check-passing", "to": "set-passed", "action": "success" },
+    { "from": "check-passing", "to": "set-failed", "action": "error" },
+    { "from": "set-passed", "to": "log-result", "action": "default" },
+    { "from": "set-failed", "to": "log-result", "action": "default" },
+    { "from": "log-result", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "author": "TinyFlow",
+    "tags": ["example", "conditional", "branching"]
+  }
+}

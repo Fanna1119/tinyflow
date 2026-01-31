@@ -1,0 +1,229 @@
+{
+  "id": "agentic-support-ticket",
+  "name": "Agentic Support Ticket Handler",
+  "description": "An agentic workflow that classifies support tickets, checks customer history, and generates personalized responses using LLM.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "input": {
+          "ticketId": "TKT-12345",
+          "customerEmail": "john.doe@example.com",
+          "subject": "Cannot access my account",
+          "message": "Hi, I've been trying to log into my account for the past 2 hours but keep getting an 'invalid credentials' error. I'm sure my password is correct. Please help urgently as I need to access important documents.",
+          "priority": "high"
+        }
+      },
+      "position": {
+        "x": 100,
+        "y": 200
+      },
+      "label": "start"
+    },
+    {
+      "id": "store-ticket",
+      "functionId": "db.insert",
+      "params": {
+        "table": "tickets",
+        "dataKey": "input",
+        "outputKey": "ticket"
+      },
+      "position": {
+        "x": 350,
+        "y": 200
+      },
+      "label": "db.insert"
+    },
+    {
+      "id": "build-context",
+      "functionId": "transform.template",
+      "params": {
+        "template": "Support Ticket Analysis:\n\nSubject: {{subject}}\nPriority: {{priority}}\nCustomer: {{customerEmail}}\n\nMessage:\n{{message}}",
+        "outputKey": "analysisContext"
+      },
+      "position": {
+        "x": 600,
+        "y": 200
+      },
+      "label": "transform.template"
+    },
+    {
+      "id": "classify-ticket",
+      "functionId": "llm.decide",
+      "params": {
+        "promptKey": "analysisContext",
+        "options": [
+          "billing",
+          "technical",
+          "account",
+          "general"
+        ],
+        "outputKey": "category",
+        "systemPrompt": "Classify this support ticket into the most appropriate category based on the content.",
+        "simulate": true
+      },
+      "position": {
+        "x": 850,
+        "y": 200
+      },
+      "label": "llm.decide"
+    },
+    {
+      "id": "check-customer-history",
+      "functionId": "memory.get",
+      "params": {
+        "memoryKey": "customer:john.doe@example.com:history",
+        "outputKey": "customerHistory",
+        "defaultValue": {
+          "previousTickets": 0,
+          "loyaltyTier": "standard",
+          "accountAge": "unknown"
+        }
+      },
+      "position": {
+        "x": 1100,
+        "y": 200
+      },
+      "label": "memory.get"
+    },
+    {
+      "id": "build-response-prompt",
+      "functionId": "transform.template",
+      "params": {
+        "template": "Generate a helpful, empathetic customer support response for this ticket.\n\nCategory: {{category}}\nSubject: {{subject}}\nCustomer Message: {{message}}\nPriority: {{priority}}\n\nProvide a professional response that:\n1. Acknowledges their frustration\n2. Explains likely causes\n3. Provides clear next steps\n4. Offers additional assistance",
+        "outputKey": "responsePrompt"
+      },
+      "position": {
+        "x": 1350,
+        "y": 200
+      },
+      "label": "transform.template"
+    },
+    {
+      "id": "generate-response",
+      "functionId": "llm.chat",
+      "params": {
+        "promptKey": "responsePrompt",
+        "outputKey": "generatedResponse",
+        "model": "gpt-4o-mini",
+        "systemPrompt": "You are a friendly and professional customer support agent. Keep responses concise but helpful.",
+        "temperature": 0.7,
+        "simulate": true
+      },
+      "position": {
+        "x": 1600,
+        "y": 200
+      },
+      "label": "llm.chat"
+    },
+    {
+      "id": "store-response",
+      "functionId": "memory.set",
+      "params": {
+        "memoryKey": "ticket:TKT-12345:response",
+        "valueKey": "generatedResponse",
+        "ttl": 86400
+      },
+      "position": {
+        "x": 1850,
+        "y": 200
+      },
+      "label": "memory.set"
+    },
+    {
+      "id": "log-result",
+      "functionId": "core.log",
+      "params": {
+        "key": "generatedResponse",
+        "message": "Support Response Generated"
+      },
+      "position": {
+        "x": 2100,
+        "y": 200
+      },
+      "label": "core.log"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "generatedResponse"
+      },
+      "position": {
+        "x": 2350,
+        "y": 200
+      },
+      "label": "core.end"
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "store-ticket",
+      "action": "default"
+    },
+    {
+      "from": "store-ticket",
+      "to": "build-context",
+      "action": "default"
+    },
+    {
+      "from": "build-context",
+      "to": "classify-ticket",
+      "action": "default"
+    },
+    {
+      "from": "classify-ticket",
+      "to": "check-customer-history",
+      "action": "default"
+    },
+    {
+      "from": "classify-ticket",
+      "to": "check-customer-history",
+      "action": "default"
+    },
+    {
+      "from": "classify-ticket",
+      "to": "check-customer-history",
+      "action": "default"
+    },
+    {
+      "from": "classify-ticket",
+      "to": "check-customer-history",
+      "action": "default"
+    },
+    {
+      "from": "check-customer-history",
+      "to": "build-response-prompt",
+      "action": "default"
+    },
+    {
+      "from": "build-response-prompt",
+      "to": "generate-response",
+      "action": "default"
+    },
+    {
+      "from": "generate-response",
+      "to": "store-response",
+      "action": "default"
+    },
+    {
+      "from": "store-response",
+      "to": "log-result",
+      "action": "default"
+    },
+    {
+      "from": "log-result",
+      "to": "end",
+      "action": "default"
+    }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "updatedAt": "2026-01-30T11:39:25.335Z"
+  }
+}
