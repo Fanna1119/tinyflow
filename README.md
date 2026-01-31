@@ -17,6 +17,12 @@ A visual workflow editor and runtime built with React Flow and [PocketFlow](http
 - 🚀 **High Performance** - Powered by Bun runtime for fast execution
 - 🧳 **Tiny bundle size** - Minimal dependencies for lightweight deployments
 
+<!-- image example from public dir  example1.png-->
+
+<div align="center">
+  <img src="/public/example1.png" alt="Pocket Flow – 100-line minimalist LLM framework" width="600"/>
+</div>
+
 ## Installation
 
 ```bash
