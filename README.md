@@ -2,7 +2,7 @@
 
 (WIP, npm package coming soon)
 
-A visual workflow editor and runtime built with React Flow and PocketFlow.
+A visual workflow editor and runtime built with React Flow and [PocketFlow](https://github.com/The-Pocket/PocketFlow)
 
 ## Features
 
