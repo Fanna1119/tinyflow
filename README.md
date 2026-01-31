@@ -13,6 +13,9 @@ A visual workflow editor and runtime built with React Flow and [PocketFlow](http
 - 🧩 **Extensible** - Register custom functions for your workflows
 - 🤖 **AI-Ready** - Built-in LLM functions for agentic workflows (OpenAI-compatible)
 - 💾 **Storage** - In-memory database and key-value store for stateful workflows
+- 🛠️ **Debugging** - Step-through execution and mock value testing
+- 🚀 **High Performance** - Powered by Bun runtime for fast execution
+- 🧳 **Tiny bundle size** - Minimal dependencies for lightweight deployments
 
 ## Installation
 
