@@ -130,29 +130,17 @@ describe("buildBundle", () => {
     });
   });
 
-  describe("IIFE format", () => {
-    it("should generate IIFE bundle with global variable", async () => {
+  describe("format validation", () => {
+    it("should reject unknown formats", async () => {
       const workflow = createTestWorkflow();
       const result = await buildBundle({
         workflow,
+        // @ts-expect-error - testing invalid format
         format: "iife",
-        globalName: "MyFlow",
       });
 
-      expect(result.success).toBe(true);
-      expect(result.code).toBeDefined();
-      expect(result.code).toContain("(function(global)");
-      expect(result.code).toContain(
-        "global.MyFlow = { runFlow, setEnv, getEnv, getWorkflow }",
-      );
-    });
-
-    it("should use default global name when not specified", async () => {
-      const workflow = createTestWorkflow();
-      const result = await buildBundle({ workflow, format: "iife" });
-
-      expect(result.success).toBe(true);
-      expect(result.code).toContain("global.TinyFlow");
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Unknown format");
     });
   });
 

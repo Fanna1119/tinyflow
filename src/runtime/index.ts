@@ -4,3 +4,5 @@
  */
 
 export * from "./runtime";
+export * from "./retry";
+export * from "./persistence";

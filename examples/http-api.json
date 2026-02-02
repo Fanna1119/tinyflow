@@ -8,16 +8,24 @@
       "id": "start",
       "functionId": "core.start",
       "params": {},
-      "position": { "x": 100, "y": 150 }
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "label": "core.start"
     },
     {
       "id": "fetch-todo",
       "functionId": "http.get",
       "params": {
-        "url": "https://jsonplaceholder.typicode.com/todos/1",
+        "url": "https://jsonplaceholder.typicode.com/todos/2",
         "outputKey": "todo"
       },
-      "position": { "x": 300, "y": 150 }
+      "position": {
+        "x": 300,
+        "y": 150
+      },
+      "label": "http.get"
     },
     {
       "id": "extract-title",
@@ -27,7 +35,11 @@
         "path": "title",
         "outputKey": "todoTitle"
       },
-      "position": { "x": 500, "y": 150 }
+      "position": {
+        "x": 500,
+        "y": 150
+      },
+      "label": "transform.map"
     },
     {
       "id": "format-message",
@@ -36,7 +48,11 @@
         "template": "Todo item: {{todoTitle}}",
         "outputKey": "message"
       },
-      "position": { "x": 700, "y": 150 }
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "label": "transform.template"
     },
     {
       "id": "log-message",
@@ -44,7 +60,11 @@
       "params": {
         "key": "message"
       },
-      "position": { "x": 900, "y": 150 }
+      "position": {
+        "x": 900,
+        "y": 150
+      },
+      "label": "core.log"
     },
     {
       "id": "end",
@@ -52,21 +72,44 @@
       "params": {
         "outputKey": "message"
       },
-      "position": { "x": 1100, "y": 150 }
+      "position": {
+        "x": 1100,
+        "y": 150
+      },
+      "label": "core.end"
     }
   ],
   "edges": [
-    { "from": "start", "to": "fetch-todo", "action": "default" },
-    { "from": "fetch-todo", "to": "extract-title", "action": "success" },
-    { "from": "extract-title", "to": "format-message", "action": "default" },
-    { "from": "format-message", "to": "log-message", "action": "default" },
-    { "from": "log-message", "to": "end", "action": "default" }
+    {
+      "from": "start",
+      "to": "fetch-todo",
+      "action": "default"
+    },
+    {
+      "from": "fetch-todo",
+      "to": "extract-title",
+      "action": "success"
+    },
+    {
+      "from": "extract-title",
+      "to": "format-message",
+      "action": "default"
+    },
+    {
+      "from": "format-message",
+      "to": "log-message",
+      "action": "default"
+    },
+    {
+      "from": "log-message",
+      "to": "end",
+      "action": "default"
+    }
   ],
   "flow": {
     "startNodeId": "start"
   },
   "metadata": {
-    "author": "TinyFlow",
-    "tags": ["example", "http", "api"]
+    "updatedAt": "2026-02-02T18:53:06.868Z"
   }
 }

@@ -304,7 +304,6 @@ async function bundleCommand(args: string[]): Promise<void> {
       env: { type: "string", short: "e", multiple: true },
       minify: { type: "boolean", short: "m", default: false },
       standalone: { type: "boolean", short: "s", default: true },
-      global: { type: "string", short: "g", default: "TinyFlow" },
       help: { type: "boolean", short: "h", default: false },
     },
     allowPositionals: true,
@@ -316,20 +315,19 @@ Usage: tinyflow bundle <workflow.json> [options]
 
 Generates a standalone JavaScript bundle with the workflow embedded.
 The bundle exports runFlow(), setEnv(), getEnv(), and getWorkflow() functions.
+Note: Bundles are designed to run server-side (Node.js/Bun) only.
 
 Options:
   -o, --output <file>    Output file path (default: workflow.bundle.js)
-  -f, --format <format>  Output format: esm, cjs, iife (default: esm)
+  -f, --format <format>  Output format: esm, cjs (default: esm)
   -e, --env <K=V>        Default environment variable (can be repeated)
   -m, --minify           Minify the output
   -s, --standalone       Include embedded runtime (default: true)
-  --global <name>        Global variable name for IIFE format (default: TinyFlow)
   -h, --help             Show this help message
 
 Examples:
   tinyflow bundle workflow.json -o ./dist/flow.js
   tinyflow bundle workflow.json -f cjs -o ./dist/flow.cjs
-  tinyflow bundle workflow.json -f iife --global MyFlow -m
   tinyflow bundle workflow.json -e API_KEY=xxx -e MODE=prod
 `);
     return;
@@ -377,10 +375,10 @@ Examples:
     logInfo(`Loaded default environment from ${envPath}`);
   }
 
-  // Determine output format
-  const format = (values.format as "esm" | "cjs" | "iife") || "esm";
-  if (!["esm", "cjs", "iife"].includes(format)) {
-    logError(`Invalid format: ${format}. Use: esm, cjs, or iife`);
+  // Determine output format (server-side only: esm or cjs)
+  const format = (values.format as "esm" | "cjs") || "esm";
+  if (!["esm", "cjs"].includes(format)) {
+    logError(`Invalid format: ${format}. Use: esm or cjs`);
     process.exit(1);
   }
 
@@ -396,9 +394,6 @@ Examples:
   log(`  Format: ${format}`, "dim");
   log(`  Minify: ${values.minify}`, "dim");
   log(`  Standalone: ${values.standalone}`, "dim");
-  if (format === "iife") {
-    log(`  Global name: ${values.global}`, "dim");
-  }
   if (Object.keys(defaultEnv).length > 0) {
     log(`  Default env: ${Object.keys(defaultEnv).join(", ")}`, "dim");
   }
@@ -409,7 +404,6 @@ Examples:
     defaultEnv,
     minify: values.minify,
     includeRuntime: values.standalone,
-    globalName: values.global,
   });
 
   if (!result.success) {
@@ -437,14 +431,11 @@ Examples:
       `  import { runFlow, setEnv } from './${basename(outputPath)}';`,
       "cyan",
     );
-  } else if (format === "cjs") {
+  } else {
     log(
       `  const { runFlow, setEnv } = require('./${basename(outputPath)}');`,
       "cyan",
     );
-  } else {
-    log(`  <script src="${basename(outputPath)}"></script>`, "cyan");
-    log(`  ${values.global}.runFlow().then(console.log);`, "cyan");
   }
 }
 

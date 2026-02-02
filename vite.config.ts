@@ -2,12 +2,18 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { tinyflowDevServer } from "./src/server/devServerPlugin";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  // Expose TINYFLOW_ and OPENAI_ prefixed env vars to the client
-  envPrefix: ["VITE_", "TINYFLOW_", "OPENAI_"],
+  plugins: [
+    react(),
+    tailwindcss(),
+    // Server-side workflow execution - bundles only run on server
+    tinyflowDevServer(),
+  ],
+  // Only expose VITE_ prefixed env vars to client (secrets stay server-side)
+  envPrefix: ["VITE_"],
   test: {
     globals: true,
     environment: "node",

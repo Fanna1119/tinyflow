@@ -12,6 +12,8 @@ import {
   AlertCircle,
   FileJson,
   Save,
+  Settings,
+  Package,
 } from "lucide-react";
 
 interface ToolbarProps {
@@ -26,6 +28,9 @@ interface ToolbarProps {
   onClear: () => void;
   onValidate: () => void;
   onNameChange: (name: string) => void;
+  onSettings: () => void;
+  onBundle?: () => void;
+  showBundle?: boolean;
 }
 
 export function Toolbar({
@@ -40,6 +45,9 @@ export function Toolbar({
   onClear,
   onValidate,
   onNameChange,
+  onSettings,
+  onBundle,
+  showBundle = false,
 }: ToolbarProps) {
   const isValid = validationErrors.length === 0;
 
@@ -129,6 +137,27 @@ export function Toolbar({
         </button>
 
         <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-2" />
+
+        {/* Bundle (only shown when multiple workflows available) */}
+        {showBundle && onBundle && (
+          <button
+            onClick={onBundle}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+            title="Bundle workflows"
+          >
+            <Package className="w-4 h-4" />
+            Bundle
+          </button>
+        )}
+
+        {/* Settings */}
+        <button
+          onClick={onSettings}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+          title="Settings"
+        >
+          <Settings className="w-4 h-4" />
+        </button>
 
         {/* Run */}
         <button

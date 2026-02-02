@@ -102,7 +102,7 @@ export const FunctionNode = memo(({ data, selected }: NodeProps) => {
               {nodeData.label}
             </span>
             {nodeData.hasMock && (
-              <FlaskConical className="w-3 h-3 text-purple-500 flex-shrink-0" />
+              <FlaskConical className="w-3 h-3 text-purple-500 shrink-0" />
             )}
           </div>
           <div className="text-xs text-gray-500 dark:text-gray-400 truncate">

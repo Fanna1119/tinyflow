@@ -3,7 +3,7 @@
  * Combines React Flow with sidebar and config panel
  */
 
-import { useCallback, useRef, useState, useMemo } from "react";
+import { useCallback, useRef, useState, useMemo, useEffect } from "react";
 import {
   ReactFlow,
   Background,
@@ -18,11 +18,20 @@ import { Sidebar } from "./Sidebar";
 import { NodeConfigPanel } from "./NodeConfigPanel";
 import { Toolbar } from "./Toolbar";
 import { DebugPanel } from "./DebugPanel";
+import { SettingsModal } from "./SettingsModal";
+import { createEmptyWorkflow } from "./WorkflowTabs";
+import { BundleModal } from "./BundleModal";
 import { nodeTypes } from "./nodeTypes";
 import { useFlowEditor } from "../hooks/useFlowEditor";
 import { useDebugger } from "../hooks/useDebugger";
-import { runWorkflow } from "../../runtime";
+import { executeWorkflowOnServer } from "../utils/serverApi";
 import type { WorkflowDefinition } from "../../schema/types";
+import {
+  type TinyFlowSettings,
+  DEFAULT_SETTINGS,
+  initSettingsAccess,
+  loadSettings,
+} from "../utils/settings";
 
 interface FlowEditorProps {
   initialWorkflow?: WorkflowDefinition;
@@ -30,18 +39,34 @@ interface FlowEditorProps {
 }
 
 export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
-  const [state, actions] = useFlowEditor(initialWorkflow);
+  const [state, actions] = useFlowEditor(
+    initialWorkflow ?? createEmptyWorkflow("Untitled Workflow"),
+  );
   const [debugState, debugActions] = useDebugger();
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showBundleModal, setShowBundleModal] = useState(false);
   const [lastDuration, setLastDuration] = useState<number | undefined>();
+  const [hasPendingSteps, setHasPendingSteps] = useState(false);
+  const [editorSettings, setEditorSettings] =
+    useState<TinyFlowSettings>(DEFAULT_SETTINGS);
   const [fileHandle, setFileHandle] = useState<FileSystemFileHandle | null>(
     null,
   );
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const reactFlowInstance = useRef<ReactFlowInstance<any> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load settings on mount
+  useEffect(() => {
+    initSettingsAccess().then((hasAccess) => {
+      if (hasAccess) {
+        loadSettings().then(setEditorSettings);
+      }
+    });
+  }, []);
 
   // Enhance nodes with execution status and mock indicators
   const enhancedNodes = useMemo(() => {
@@ -125,6 +150,11 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
         if (!result.success) {
           alert(`Import failed: ${result.error}`);
         } else {
+          if (result.warnings?.length) {
+            console.warn("Import warnings:", result.warnings);
+            // Optionally show to user
+            alert(`Imported with warnings:\n• ${result.warnings.join("\n• ")}`);
+          }
           setFileHandle(handle); // Store handle for saving
           handleValidate();
         }
@@ -152,6 +182,10 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
         if (!result.success) {
           alert(`Import failed: ${result.error}`);
         } else {
+          if (result.warnings?.length) {
+            console.warn("Import warnings:", result.warnings);
+            alert(`Imported with warnings:\n• ${result.warnings.join("\n• ")}`);
+          }
           setFileHandle(null); // No handle available with fallback
           handleValidate();
         }
@@ -226,62 +260,165 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
     onSave?.(workflow);
   }, [actions, onSave]);
 
+  // Store for step-by-step playback
+  const pendingEventsRef = useRef<
+    Array<{
+      type: "start" | "complete";
+      nodeId: string;
+      params?: Record<string, unknown>;
+      success?: boolean;
+      output?: unknown;
+    }>
+  >([]);
+  const executionResultRef = useRef<{
+    success: boolean;
+    duration: number;
+  } | null>(null);
+
+  // Process next step in step mode
+  const processNextEvent = useCallback(() => {
+    if (pendingEventsRef.current.length === 0) {
+      setHasPendingSteps(false);
+      setIsRunning(false);
+      // End session with stored result
+      if (executionResultRef.current) {
+        debugActions.endSession(executionResultRef.current.success);
+        setLastDuration(executionResultRef.current.duration);
+        executionResultRef.current = null;
+      }
+      return false;
+    }
+
+    const event = pendingEventsRef.current.shift()!;
+    if (event.type === "start") {
+      debugActions.onNodeStart(event.nodeId, event.params || {});
+    } else {
+      debugActions.onNodeComplete(event.nodeId, event.success!, event.output);
+    }
+
+    // Update pending state
+    setHasPendingSteps(pendingEventsRef.current.length > 0);
+
+    // If no more events, we're done
+    if (pendingEventsRef.current.length === 0) {
+      setIsRunning(false);
+      if (executionResultRef.current) {
+        debugActions.endSession(executionResultRef.current.success);
+        setLastDuration(executionResultRef.current.duration);
+        executionResultRef.current = null;
+      }
+    }
+
+    return pendingEventsRef.current.length > 0;
+  }, [debugActions]);
+
+  // Handle step button click
+  const handleStep = useCallback(() => {
+    processNextEvent();
+  }, [processNextEvent]);
+
   // Run workflow
   const handleRun = useCallback(async () => {
     const workflow = actions.exportWorkflow();
     setIsRunning(true);
     setLastDuration(undefined);
     setShowDebugPanel(true); // Auto-open debug panel
+    setHasPendingSteps(false);
 
     // Start debug session
     debugActions.startSession();
+    pendingEventsRef.current = [];
+    executionResultRef.current = null;
 
-    // Collect environment variables from import.meta.env
-    const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(import.meta.env)) {
-      // Include OPENAI_ and TINYFLOW_ prefixed vars
-      if (
-        typeof value === "string" &&
-        (key.startsWith("OPENAI_") || key.startsWith("TINYFLOW_"))
-      ) {
-        env[key] = value;
+    // Convert mock values to plain object for server
+    const mockValuesObj: Record<string, unknown> = {};
+    const mockMap = debugActions.getMockValues();
+    if (mockMap) {
+      for (const [key, value] of mockMap.entries()) {
+        mockValuesObj[key] = value;
       }
     }
 
     try {
-      const result = await runWorkflow(workflow, {
-        env,
-        mockValues: debugActions.getMockValues(),
-        onBeforeNode: async (nodeId) => {
-          // In step mode, wait for user to click Next
-          if (debugState.stepMode) {
-            // Select the node so user can see what's about to execute
-            actions.selectNode(nodeId);
-            await debugActions.waitForStep();
-          }
-        },
-        onNodeStart: (nodeId, params) => {
-          debugActions.onNodeStart(nodeId, params);
-        },
-        onNodeComplete: (nodeId, success, output) => {
-          debugActions.onNodeComplete(nodeId, success, output);
-        },
-        onError: (nodeId, error) => {
-          console.error(`Error in "${nodeId}": ${error}`);
-        },
-      });
+      if (debugState.stepMode) {
+        // Step mode: collect all events first, then play back one by one
+        const collectedEvents: Array<{
+          type: "start" | "complete";
+          nodeId: string;
+          params?: Record<string, unknown>;
+          success?: boolean;
+          output?: unknown;
+        }> = [];
 
-      debugActions.endSession(result.success);
-      setLastDuration(result.duration);
-      console.log("Execution result:", result);
+        const result = await executeWorkflowOnServer(workflow, {
+          mockValues:
+            Object.keys(mockValuesObj).length > 0 ? mockValuesObj : undefined,
+          callbacks: {
+            onNodeStart: (nodeId, params) => {
+              collectedEvents.push({ type: "start", nodeId, params });
+            },
+            onNodeComplete: (nodeId, success, output) => {
+              collectedEvents.push({
+                type: "complete",
+                nodeId,
+                success,
+                output,
+              });
+            },
+            onError: (nodeId, error) => {
+              console.error(`Error in "${nodeId}": ${error}`);
+            },
+          },
+        });
+
+        // Store events for playback and result for later
+        pendingEventsRef.current = collectedEvents;
+        executionResultRef.current = {
+          success: result.success,
+          duration: result.duration,
+        };
+
+        if (collectedEvents.length > 0) {
+          setHasPendingSteps(true);
+          // Process first event automatically
+          processNextEvent();
+        } else {
+          // No events, end immediately
+          debugActions.endSession(result.success);
+          setLastDuration(result.duration);
+          setIsRunning(false);
+        }
+      } else {
+        // Normal mode: show events in real-time
+        const result = await executeWorkflowOnServer(workflow, {
+          mockValues:
+            Object.keys(mockValuesObj).length > 0 ? mockValuesObj : undefined,
+          callbacks: {
+            onNodeStart: (nodeId, params) => {
+              debugActions.onNodeStart(nodeId, params);
+            },
+            onNodeComplete: (nodeId, success, output) => {
+              debugActions.onNodeComplete(nodeId, success, output);
+            },
+            onError: (nodeId, error) => {
+              console.error(`Error in "${nodeId}": ${error}`);
+            },
+          },
+        });
+
+        debugActions.endSession(result.success);
+        setLastDuration(result.duration);
+        setIsRunning(false);
+        console.log("Execution result:", result);
+      }
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : "Unknown error";
       debugActions.endSession(false);
-      console.error("Execution error:", errorMsg);
-    } finally {
       setIsRunning(false);
+      setHasPendingSteps(false);
+      console.error("Execution error:", errorMsg);
     }
-  }, [actions, debugActions, debugState.stepMode]);
+  }, [actions, debugActions, debugState.stepMode, processNextEvent]);
 
   // Clear
   const handleClear = useCallback(() => {
@@ -291,6 +428,18 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
       debugActions.reset();
     }
   }, [actions, debugActions]);
+
+  // Get current workflow for bundle modal
+  const currentWorkflow = useMemo(() => {
+    const workflow = actions.exportWorkflow();
+    return [
+      {
+        id: workflow.id,
+        name: workflow.name,
+        workflow,
+      },
+    ];
+  }, [actions]);
 
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-950">
@@ -321,6 +470,9 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
           onClear={handleClear}
           onValidate={handleValidate}
           onNameChange={(name) => actions.updateMeta({ name })}
+          onSettings={() => setShowSettings(true)}
+          onBundle={() => setShowBundleModal(true)}
+          showBundle={true}
         />
 
         {/* React Flow Canvas */}
@@ -340,22 +492,27 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
             }}
             nodeTypes={nodeTypes}
             fitView
-            snapToGrid
-            snapGrid={[15, 15]}
+            snapToGrid={editorSettings.editor.snapToGrid}
+            snapGrid={[
+              editorSettings.editor.gridSize,
+              editorSettings.editor.gridSize,
+            ]}
             defaultEdgeOptions={{
               type: "smoothstep",
               animated: false,
             }}
             proOptions={{ hideAttribution: true }}
           >
-            <Background gap={15} size={1} />
+            <Background gap={editorSettings.editor.gridSize} size={1} />
             <Controls />
-            <MiniMap
-              nodeColor={(node) =>
-                node.type === "error" ? "#ef4444" : "#3b82f6"
-              }
-              maskColor="rgba(0, 0, 0, 0.1)"
-            />
+            {editorSettings.editor.showMinimap && (
+              <MiniMap
+                nodeColor={(node) =>
+                  node.type === "error" ? "#ef4444" : "#3b82f6"
+                }
+                maskColor="rgba(0, 0, 0, 0.1)"
+              />
+            )}
 
             {/* Running indicator */}
             {isRunning && (
@@ -416,8 +573,8 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
             onStepClick={(nodeId) => actions.selectNode(nodeId)}
             stepMode={debugState.stepMode}
             onToggleStepMode={debugActions.toggleStepMode}
-            isPaused={debugState.isPaused}
-            onNextStep={debugActions.nextStep}
+            isPaused={hasPendingSteps && debugState.stepMode}
+            onNextStep={handleStep}
           />
         </div>
       </div>
@@ -444,6 +601,22 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
           }
         />
       )}
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        onSettingsChange={(settings) => {
+          setEditorSettings(settings);
+        }}
+      />
+
+      {/* Bundle Modal */}
+      <BundleModal
+        isOpen={showBundleModal}
+        onClose={() => setShowBundleModal(false)}
+        workflows={currentWorkflow}
+      />
     </div>
   );
 }

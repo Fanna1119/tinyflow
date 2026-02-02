@@ -5,21 +5,45 @@
 import type { WorkflowDefinition } from "../schema/types";
 
 /**
+ * Configuration for a single workflow in a multi-workflow bundle
+ */
+export interface WorkflowBundleEntry {
+  /** The workflow definition */
+  workflow: WorkflowDefinition;
+  /** Export name for this workflow (e.g., 'flowA' -> import { flowA } from './bundle') */
+  exportName: string;
+  /** HTTP endpoint path for server mode (e.g., '/api/flow-a') */
+  endpointPath?: string;
+  /** HTTP methods allowed (default: ['POST']) */
+  methods?: ("GET" | "POST" | "PUT" | "DELETE")[];
+}
+
+/**
  * Options for building a bundle
  */
 export interface BundleOptions {
-  /** The workflow to bundle */
-  workflow: WorkflowDefinition;
+  /** The workflow to bundle (single workflow mode) */
+  workflow?: WorkflowDefinition;
+  /** Multiple workflows to bundle (multi-workflow mode) */
+  workflows?: WorkflowBundleEntry[];
   /** Default environment variables embedded in bundle */
   defaultEnv?: Record<string, string>;
   /** Include TinyFlow runtime (default: true for standalone bundles) */
   includeRuntime?: boolean;
   /** Minify the output (default: false) */
   minify?: boolean;
-  /** Output format */
-  format?: "esm" | "cjs" | "iife";
-  /** Global variable name for IIFE format */
-  globalName?: string;
+  /** Output format (server-side only: ESM or CommonJS) */
+  format?: "esm" | "cjs";
+  /** Generate HTTP server file (server.js) using Bun.serve */
+  includeServer?: boolean;
+  /** Server port (default: 3000) */
+  serverPort?: number;
+  /** Generate Dockerfile for Bun runtime */
+  emitDocker?: boolean;
+  /** Generate docker-compose.yml */
+  emitCompose?: boolean;
+  /** Custom bundle filename (default varies by format) */
+  bundleFilename?: string;
 }
 
 /**
@@ -32,6 +56,8 @@ export interface BundleResult {
   code?: string;
   /** Error message if failed */
   error?: string;
+  /** Generated files map (filename -> content) including bundle, server, Docker files */
+  files?: Record<string, string>;
 }
 
 /**
