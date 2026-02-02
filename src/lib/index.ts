@@ -20,5 +20,11 @@ export * from "../runtime";
 // Bundle Builder
 export * from "../bundle";
 
+// Credentials & Secrets
+export * from "../credentials";
+
+// Testing Utilities
+export * from "../testing";
+
 // UI Components (optional, for browser environments)
 export * from "../ui";

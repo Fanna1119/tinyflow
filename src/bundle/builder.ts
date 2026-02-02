@@ -1,12 +1,35 @@
 /**
  * TinyFlow Bundle Builder
  * Generates standalone JavaScript code with embedded workflow
+ * Note: Bundles are designed to run server-side only (Node.js/Bun)
  */
 
-import { transform } from "esbuild";
 import type { WorkflowDefinition, WorkflowNode } from "../schema/types";
-import type { BundleOptions, BundleResult } from "./types";
+import type { BundleOptions, BundleResult, WorkflowBundleEntry } from "./types";
 import { registry } from "../registry";
+
+/**
+ * Minify code using esbuild
+ * This runs server-side only - bundles never execute in browsers
+ */
+async function minifyCode(
+  code: string,
+  format: "esm" | "cjs",
+): Promise<string> {
+  try {
+    const esbuild = await import("esbuild");
+    const result = await esbuild.transform(code, {
+      minify: true,
+      format: format,
+      target: "es2020",
+    });
+    return result.code;
+  } catch {
+    // esbuild not available
+    console.warn("esbuild not available, skipping minification");
+    return code;
+  }
+}
 
 /**
  * Strip ReactFlow-specific data (position) from nodes for smaller bundles
@@ -375,80 +398,262 @@ function generateCJSBundle(
   return cjsCode;
 }
 
+// =============================================================================
+// Multi-Workflow Bundle Generation
+// =============================================================================
+
 /**
- * Generate IIFE bundle code
+ * Generate ESM bundle for multiple workflows
+ * Each workflow gets its own named export
  */
-function generateIIFEBundle(
-  workflow: WorkflowDefinition,
+function generateMultiWorkflowESMBundle(
+  entries: WorkflowBundleEntry[],
   defaultEnv: Record<string, string>,
-  globalName: string,
 ): string {
-  // Strip position data from nodes for smaller bundles
-  const strippedWorkflow = {
-    ...workflow,
-    nodes: stripNodeMetadata(workflow.nodes),
-  };
-  const workflowJson = JSON.stringify(strippedWorkflow, null, 2);
-  const envJson = JSON.stringify(defaultEnv, null, 2);
-  const usedFunctions = getUsedFunctionIds(workflow);
-
-  return `(function(global) {
-${generateRuntimeCode(usedFunctions)}
-
-// =============================================================================
-// Embedded Workflow
-// =============================================================================
-
-const WORKFLOW = ${workflowJson};
-
-const DEFAULT_ENV = ${envJson};
-
-// Current environment state
-let currentEnv = { ...DEFAULT_ENV };
-
-async function runFlow(options = {}) {
-  const mergedOptions = {
-    ...options,
-    env: { ...currentEnv, ...options.env },
-  };
-  return executeWorkflow(WORKFLOW, mergedOptions);
-}
-
-function setEnv(key, value) {
-  if (typeof key === 'object') {
-    Object.assign(currentEnv, key);
-  } else {
-    currentEnv[key] = value;
+  // Collect all used functions across all workflows
+  const allUsedFunctions = new Set<string>();
+  for (const entry of entries) {
+    for (const fnId of getUsedFunctionIds(entry.workflow)) {
+      allUsedFunctions.add(fnId);
+    }
   }
+
+  // Generate workflow modules
+  const workflowModules = entries
+    .map((entry) => {
+      const strippedWorkflow = {
+        ...entry.workflow,
+        nodes: stripNodeMetadata(entry.workflow.nodes),
+      };
+      const workflowJson = JSON.stringify(strippedWorkflow, null, 2);
+      const exportName = entry.exportName;
+
+      return `
+// =============================================================================
+// Workflow: ${entry.workflow.name} (${exportName})
+// =============================================================================
+
+const ${exportName}_WORKFLOW = ${workflowJson};
+let ${exportName}_env = { ...DEFAULT_ENV };
+
+export const ${exportName} = {
+  async runFlow(options = {}) {
+    const mergedOptions = {
+      ...options,
+      env: { ...${exportName}_env, ...options.env },
+    };
+    return executeWorkflow(${exportName}_WORKFLOW, mergedOptions);
+  },
+  setEnv(key, value) {
+    if (typeof key === 'object') {
+      Object.assign(${exportName}_env, key);
+    } else {
+      ${exportName}_env[key] = value;
+    }
+  },
+  getEnv() {
+    return { ...${exportName}_env };
+  },
+  getWorkflow() {
+    return JSON.parse(JSON.stringify(${exportName}_WORKFLOW));
+  },
+  name: '${entry.workflow.name}',
+  id: '${entry.workflow.id}',
+};
+`;
+    })
+    .join("\n");
+
+  // Generate exports list
+  const exportNames = entries.map((e) => e.exportName);
+  const exportsObject = `{ ${exportNames.join(", ")} }`;
+
+  return `${generateRuntimeCode(allUsedFunctions)}
+
+const DEFAULT_ENV = ${JSON.stringify(defaultEnv, null, 2)};
+
+${workflowModules}
+
+// All workflows
+export const workflows = ${exportsObject};
+export default workflows;
+`;
 }
 
-function getEnv() {
-  return { ...currentEnv };
-}
+/**
+ * Generate multi-workflow server with one endpoint per workflow
+ */
+function generateMultiWorkflowServer(
+  entries: WorkflowBundleEntry[],
+  bundleFilename: string,
+  serverPort: number,
+  format: "esm" | "cjs",
+): string {
+  const importStatement =
+    format === "esm"
+      ? `import { ${entries.map((e) => e.exportName).join(", ")} } from './${bundleFilename}';`
+      : `const { ${entries.map((e) => e.exportName).join(", ")} } = require('./${bundleFilename}');`;
 
-function getWorkflow() {
-  return JSON.parse(JSON.stringify(WORKFLOW));
-}
+  // Build routing map
+  const routeHandlers = entries
+    .map((entry) => {
+      const path =
+        entry.endpointPath ||
+        `/api/${entry.exportName.toLowerCase().replace(/_/g, "-")}`;
+      const methods = entry.methods || ["POST"];
+      const methodCheck = methods
+        .map((m) => `req.method === '${m}'`)
+        .join(" || ");
 
-global.${globalName} = { runFlow, setEnv, getEnv, getWorkflow };
-})(typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : this);
+      return `    // ${entry.workflow.name}
+    if (url.pathname === '${path}' && (${methodCheck})) {
+      try {
+        const payload = req.method === 'GET' ? {} : await req.json().catch(() => ({}));
+        const result = await ${entry.exportName}.runFlow({
+          initialData: payload.initialData ?? payload,
+          env: payload.env,
+        });
+        return new Response(JSON.stringify(result), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: e?.message ?? String(e) }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    }`;
+    })
+    .join("\n\n");
+
+  // Build endpoint documentation
+  const endpointDocs = entries
+    .map((entry) => {
+      const path =
+        entry.endpointPath ||
+        `/api/${entry.exportName.toLowerCase().replace(/_/g, "-")}`;
+      const methods = entry.methods || ["POST"];
+      return `//   ${methods.join("|")} ${path} -> ${entry.workflow.name}`;
+    })
+    .join("\n");
+
+  return `${importStatement}
+
+// =============================================================================
+// TinyFlow Multi-Workflow Server
+// Endpoints:
+${endpointDocs}
+// =============================================================================
+
+Bun.serve({
+  port: Number(process.env.PORT || ${serverPort}),
+  async fetch(req) {
+    const url = new URL(req.url);
+    
+    // Handle CORS preflight
+    if (req.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        },
+      });
+    }
+
+    // Health check
+    if (url.pathname === '/health') {
+      return new Response(JSON.stringify({ status: 'ok', workflows: ${entries.length} }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // List available endpoints
+    if (url.pathname === '/' || url.pathname === '/api') {
+      const endpoints = ${JSON.stringify(
+        entries.map((e) => ({
+          name: e.workflow.name,
+          exportName: e.exportName,
+          path:
+            e.endpointPath ||
+            `/api/${e.exportName.toLowerCase().replace(/_/g, "-")}`,
+          methods: e.methods || ["POST"],
+        })),
+        null,
+        2,
+      )};
+      return new Response(JSON.stringify({ endpoints }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+${routeHandlers}
+
+    return new Response(JSON.stringify({ error: 'Not found' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  },
+});
+
+console.log(\`TinyFlow server listening on port \${process.env.PORT || ${serverPort}}\`);
+console.log('Available endpoints:');
+${entries
+  .map((e) => {
+    const path =
+      e.endpointPath || `/api/${e.exportName.toLowerCase().replace(/_/g, "-")}`;
+    return `console.log('  ${path} -> ${e.workflow.name}');`;
+  })
+  .join("\n")}
 `;
 }
 
 /**
  * Build a standalone JavaScript bundle from a workflow
+ * Note: Bundles are server-side only (Node.js/Bun)
  */
 export async function buildBundle(
   options: BundleOptions,
 ): Promise<BundleResult> {
   const {
     workflow,
+    workflows,
     defaultEnv = {},
     includeRuntime = true,
     minify = false,
     format = "esm",
-    globalName = "TinyFlow",
+    includeServer = false,
+    serverPort = 3000,
+    emitDocker = false,
+    emitCompose = false,
+    bundleFilename,
   } = options;
+
+  // Validate we have either single workflow or multiple
+  if (!workflow && (!workflows || workflows.length === 0)) {
+    return { success: false, error: "No workflow(s) provided" };
+  }
+
+  // Multi-workflow mode
+  if (workflows && workflows.length > 0) {
+    return buildMultiWorkflowBundle({
+      workflows,
+      defaultEnv,
+      minify,
+      format,
+      includeServer,
+      serverPort,
+      emitDocker,
+      emitCompose,
+      bundleFilename,
+    });
+  }
+
+  // Single workflow mode (original behavior)
+  if (!workflow) {
+    return { success: false, error: "No workflow provided" };
+  }
 
   try {
     let code: string;
@@ -460,24 +665,118 @@ export async function buildBundle(
       case "cjs":
         code = generateCJSBundle(workflow, defaultEnv, includeRuntime);
         break;
-      case "iife":
-        code = generateIIFEBundle(workflow, defaultEnv, globalName);
-        break;
       default:
         return { success: false, error: `Unknown format: ${format}` };
     }
 
-    // Use esbuild for minification
+    // Use esbuild for minification (if available)
     if (minify) {
-      const result = await transform(code, {
-        minify: true,
-        format: format === "cjs" ? "cjs" : "esm",
-        target: "es2020",
-      });
-      code = result.code;
+      code = await minifyCode(code, format === "cjs" ? "cjs" : "esm");
     }
 
-    return { success: true, code };
+    // Build files map
+    const files: Record<string, string> = {};
+
+    // Determine bundle filename based on format
+    const defaultBundleFilename = format === "esm" ? "bundle.mjs" : "bundle.js";
+    const finalBundleFilename = bundleFilename ?? defaultBundleFilename;
+
+    files[finalBundleFilename] = code;
+
+    // Generate server.js using Bun.serve
+    if (includeServer) {
+      const serverCode =
+        format === "esm"
+          ? `import bundle from './${finalBundleFilename}';
+
+Bun.serve({
+  port: Number(process.env.PORT || ${serverPort}),
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (req.method === 'POST' && url.pathname === '/run') {
+      try {
+        const payload = await req.json();
+        const result = await bundle.runFlow({
+          initialData: payload.initialData,
+          env: payload.env,
+        });
+        return new Response(JSON.stringify(result), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: e?.message ?? String(e) }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+    return new Response('Not found', { status: 404 });
+  },
+});
+
+console.log(\`TinyFlow server listening on port \${process.env.PORT || ${serverPort}}\`);
+`
+          : `const bundle = require('./${finalBundleFilename}');
+
+Bun.serve({
+  port: Number(process.env.PORT || ${serverPort}),
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (req.method === 'POST' && url.pathname === '/run') {
+      try {
+        const payload = await req.json();
+        const result = await bundle.runFlow({
+          initialData: payload.initialData,
+          env: payload.env,
+        });
+        return new Response(JSON.stringify(result), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: e?.message ?? String(e) }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+    return new Response('Not found', { status: 404 });
+  },
+});
+
+console.log(\`TinyFlow server listening on port \${process.env.PORT || ${serverPort}}\`);
+`;
+
+      files["server.js"] = serverCode;
+    }
+
+    // Generate Dockerfile for Bun
+    if (emitDocker) {
+      const dockerfile = `FROM oven/bun:latest
+WORKDIR /app
+COPY . /app
+ENV NODE_ENV=production
+EXPOSE ${serverPort}
+CMD ["bun", "server.js"]
+`;
+      files["Dockerfile"] = dockerfile;
+    }
+
+    // Generate docker-compose.yml
+    if (emitCompose) {
+      const compose = `version: "3.8"
+services:
+  tinyflow:
+    build: .
+    ports:
+      - "${serverPort}:${serverPort}"
+    restart: unless-stopped
+`;
+      files["docker-compose.yml"] = compose;
+    }
+
+    return { success: true, code, files };
   } catch (e) {
     return {
       success: false,
@@ -502,4 +801,202 @@ export async function buildBundleFromJson(
       error: `Invalid JSON: ${e instanceof Error ? e.message : "Unknown error"}`,
     };
   }
+}
+
+/**
+ * Build a multi-workflow bundle
+ */
+export async function buildMultiWorkflowBundle(
+  options: Omit<BundleOptions, "workflow" | "includeRuntime" | "globalName"> & {
+    workflows: WorkflowBundleEntry[];
+  },
+): Promise<BundleResult> {
+  const {
+    workflows,
+    defaultEnv = {},
+    minify = false,
+    format = "esm",
+    includeServer = false,
+    serverPort = 3000,
+    emitDocker = false,
+    emitCompose = false,
+    bundleFilename,
+  } = options;
+
+  if (workflows.length === 0) {
+    return { success: false, error: "No workflows provided" };
+  }
+
+  // Only ESM format supported for multi-workflow bundles currently
+  if (format !== "esm" && format !== "cjs") {
+    return {
+      success: false,
+      error: "Multi-workflow bundles only support ESM and CJS formats",
+    };
+  }
+
+  try {
+    let code = generateMultiWorkflowESMBundle(workflows, defaultEnv);
+
+    // Convert to CJS if needed
+    if (format === "cjs") {
+      code = code
+        .replace(/^export const (\w+) = \{/gm, "const $1 = {")
+        .replace(/^export const workflows/m, "const workflows")
+        .replace(
+          /^export default workflows;/m,
+          "module.exports = { workflows, " +
+            workflows.map((w) => w.exportName).join(", ") +
+            " };",
+        );
+    }
+
+    // Minify if requested (if esbuild available)
+    if (minify) {
+      code = await minifyCode(code, format === "cjs" ? "cjs" : "esm");
+    }
+
+    // Build files map
+    const files: Record<string, string> = {};
+
+    const defaultBundleFilename = format === "esm" ? "bundle.mjs" : "bundle.js";
+    const finalBundleFilename = bundleFilename ?? defaultBundleFilename;
+
+    files[finalBundleFilename] = code;
+
+    // Generate multi-workflow server
+    if (includeServer) {
+      const serverCode = generateMultiWorkflowServer(
+        workflows,
+        finalBundleFilename,
+        serverPort,
+        format,
+      );
+      files["server.js"] = serverCode;
+    }
+
+    // Generate Dockerfile
+    if (emitDocker) {
+      const dockerfile = `FROM oven/bun:latest
+WORKDIR /app
+COPY . /app
+ENV NODE_ENV=production
+EXPOSE ${serverPort}
+CMD ["bun", "server.js"]
+`;
+      files["Dockerfile"] = dockerfile;
+    }
+
+    // Generate docker-compose.yml
+    if (emitCompose) {
+      const compose = `version: "3.8"
+services:
+  tinyflow:
+    build: .
+    ports:
+      - "${serverPort}:${serverPort}"
+    environment:
+      - PORT=${serverPort}
+    restart: unless-stopped
+`;
+      files["docker-compose.yml"] = compose;
+    }
+
+    // Generate README for the bundle
+    const readme = generateBundleReadme(
+      workflows,
+      finalBundleFilename,
+      includeServer,
+      serverPort,
+    );
+    files["README.md"] = readme;
+
+    return { success: true, code, files };
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : "Unknown error",
+    };
+  }
+}
+
+/**
+ * Generate README documentation for the bundle
+ */
+function generateBundleReadme(
+  workflows: WorkflowBundleEntry[],
+  bundleFilename: string,
+  includeServer: boolean,
+  serverPort: number,
+): string {
+  const exportNames = workflows.map((w) => w.exportName);
+
+  let readme = `# TinyFlow Bundle
+
+This bundle contains ${workflows.length} workflow(s):
+
+${workflows.map((w) => `- **${w.workflow.name}** (\`${w.exportName}\`)`).join("\n")}
+
+## Usage
+
+### As ES Module
+
+\`\`\`javascript
+import { ${exportNames.join(", ")} } from './${bundleFilename}';
+
+// Run a specific workflow
+const result = await ${exportNames[0]}.runFlow({
+  initialData: { /* your input data */ },
+  env: { /* optional env overrides */ },
+});
+
+console.log(result.success, result.data);
+\`\`\`
+
+### Individual Workflow API
+
+Each workflow export has these methods:
+
+- \`runFlow(options)\` - Execute the workflow
+- \`setEnv(key, value)\` - Set environment variable
+- \`getEnv()\` - Get current environment
+- \`getWorkflow()\` - Get workflow definition
+`;
+
+  if (includeServer) {
+    readme += `
+## HTTP Server
+
+Start the server:
+
+\`\`\`bash
+bun server.js
+# or
+PORT=${serverPort} bun server.js
+\`\`\`
+
+### Endpoints
+
+| Endpoint | Method | Workflow |
+|----------|--------|----------|
+${workflows
+  .map((w) => {
+    const path =
+      w.endpointPath || `/api/${w.exportName.toLowerCase().replace(/_/g, "-")}`;
+    const methods = (w.methods || ["POST"]).join(", ");
+    return `| \`${path}\` | ${methods} | ${w.workflow.name} |`;
+  })
+  .join("\n")}
+
+### Example Request
+
+\`\`\`bash
+curl -X POST http://localhost:${serverPort}${workflows[0].endpointPath || `/api/${workflows[0].exportName.toLowerCase().replace(/_/g, "-")}`} \\
+  -H "Content-Type: application/json" \\
+  -d '{"initialData": {}}'
+\`\`\`
+`;
+  }
+
+  return readme;
 }

@@ -3,7 +3,7 @@
  * Manages state for the React Flow editor
  */
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import {
   addEdge,
   applyNodeChanges,
@@ -66,7 +66,11 @@ export interface FlowEditorActions {
   /** Select a node */
   selectNode: (nodeId: string | null) => void;
   /** Import workflow from JSON */
-  importWorkflow: (json: string) => { success: boolean; error?: string };
+  importWorkflow: (json: string) => {
+    success: boolean;
+    error?: string;
+    warnings?: string[];
+  };
   /** Export workflow to JSON */
   exportWorkflow: () => WorkflowDefinition;
   /** Clear the editor */
@@ -104,9 +108,10 @@ function workflowNodeToReactFlowNode(
   };
 }
 
-function workflowEdgeToReactFlowEdge(edge: WorkflowEdge): Edge {
+function workflowEdgeToReactFlowEdge(edge: WorkflowEdge, index: number): Edge {
+  // Use a combination of from-to-action plus index to ensure uniqueness
   return {
-    id: `${edge.from}-${edge.to}-${edge.action}`,
+    id: `${edge.from}-${edge.to}-${edge.action}-${index}`,
     source: edge.from,
     target: edge.to,
     label: edge.action !== "default" ? edge.action : undefined,
@@ -146,6 +151,126 @@ function reactFlowEdgeToWorkflowEdge(edge: Edge): WorkflowEdge {
   };
 }
 
+/**
+ * Validate and normalize an imported workflow
+ * Returns normalized workflow or throws with descriptive error
+ */
+function validateAndNormalizeWorkflow(
+  raw: Record<string, unknown>,
+): WorkflowDefinition {
+  const errors: string[] = [];
+
+  // Handle legacy format where id/name are nested in flow
+  let id = raw.id as string | undefined;
+  let name = raw.name as string | undefined;
+  let description = raw.description as string | undefined;
+  let version = raw.version as string | undefined;
+
+  const flowObj = raw.flow as Record<string, unknown> | undefined;
+
+  // Check for legacy nested format
+  if (flowObj && !id && flowObj.id) {
+    id = flowObj.id as string;
+  }
+  if (flowObj && !name && flowObj.name) {
+    name = flowObj.name as string;
+  }
+  if (flowObj && !description && flowObj.description) {
+    description = flowObj.description as string;
+  }
+
+  // Validate required fields
+  if (!id || typeof id !== "string") {
+    errors.push('Missing or invalid "id" field');
+  }
+  if (!name || typeof name !== "string") {
+    errors.push('Missing or invalid "name" field');
+  }
+  if (!version) {
+    version = "1.0.0"; // Default version
+  }
+
+  // Validate nodes array
+  const rawNodes = raw.nodes as Array<Record<string, unknown>> | undefined;
+  if (!Array.isArray(rawNodes) || rawNodes.length === 0) {
+    errors.push('Missing or empty "nodes" array');
+  }
+
+  // Validate edges array
+  const rawEdges = raw.edges as Array<Record<string, unknown>> | undefined;
+  if (!Array.isArray(rawEdges)) {
+    errors.push('Missing "edges" array');
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Invalid workflow:\n- ${errors.join("\n- ")}`);
+  }
+
+  // Normalize nodes - add missing positions
+  const nodes: WorkflowNode[] = rawNodes!.map((node, index) => {
+    const position = node.position as { x: number; y: number } | undefined;
+
+    return {
+      id: node.id as string,
+      functionId: node.functionId as string,
+      params: (node.params as Record<string, unknown>) ?? {},
+      position: position ?? {
+        x: 100 + (index % 4) * 250,
+        y: 100 + Math.floor(index / 4) * 150,
+      },
+      label: node.label as string | undefined,
+      runtime: node.runtime as WorkflowNode["runtime"],
+      envs: (node.envs ?? node.env) as Record<string, string> | undefined,
+    };
+  });
+
+  // Validate each node has required fields
+  for (const node of nodes) {
+    if (!node.id) {
+      errors.push("Node missing id");
+    }
+    if (!node.functionId) {
+      errors.push(`Node "${node.id}" missing functionId`);
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Invalid workflow nodes:\n- ${errors.join("\n- ")}`);
+  }
+
+  // Normalize edges and deduplicate
+  const seenEdges = new Set<string>();
+  const edges: WorkflowEdge[] = [];
+  for (const edge of rawEdges!) {
+    const key = `${edge.from}-${edge.to}-${edge.action ?? "default"}`;
+    if (!seenEdges.has(key)) {
+      seenEdges.add(key);
+      edges.push({
+        from: edge.from as string,
+        to: edge.to as string,
+        action: (edge.action as EdgeAction) ?? "default",
+      });
+    }
+  }
+
+  // Extract startNodeId from flow object
+  const startNodeId = flowObj?.startNodeId as string | undefined;
+  const envs = flowObj?.envs as Record<string, string> | undefined;
+
+  return {
+    id: id!,
+    name: name!,
+    description,
+    version: version!,
+    nodes,
+    edges,
+    flow: {
+      startNodeId: startNodeId ?? nodes[0]?.id ?? "",
+      envs,
+    },
+  };
+}
+
 // ============================================================================
 // Hook
 // ============================================================================
@@ -154,6 +279,9 @@ export function useFlowEditor(
   initialWorkflow?: WorkflowDefinition,
 ): [FlowEditorState, FlowEditorActions] {
   const registeredFunctions = useMemo(() => registry.getIds(), []);
+
+  // Ref to track when we're importing (to suppress dirty flag during import)
+  const isImportingRef = useRef(false);
 
   // Initial state
   const [nodes, setNodes] = useState<Node[]>(() => {
@@ -166,7 +294,9 @@ export function useFlowEditor(
 
   const [edges, setEdges] = useState<Edge[]>(() => {
     if (!initialWorkflow) return [];
-    return initialWorkflow.edges.map(workflowEdgeToReactFlowEdge);
+    return initialWorkflow.edges.map((e, i) =>
+      workflowEdgeToReactFlowEdge(e, i),
+    );
   });
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -195,12 +325,18 @@ export function useFlowEditor(
   // Actions
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setNodes((nds) => applyNodeChanges(changes, nds));
-    setIsDirty(true);
+    // Don't mark dirty during import (React Flow fires changes for dimensions/positions)
+    if (!isImportingRef.current) {
+      setIsDirty(true);
+    }
   }, []);
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
     setEdges((eds) => applyEdgeChanges(changes, eds));
-    setIsDirty(true);
+    // Don't mark dirty during import
+    if (!isImportingRef.current) {
+      setIsDirty(true);
+    }
   }, []);
 
   const onConnect = useCallback((connection: Connection) => {
@@ -275,17 +411,43 @@ export function useFlowEditor(
   }, []);
 
   const importWorkflow = useCallback(
-    (json: string): { success: boolean; error?: string } => {
+    (
+      json: string,
+    ): { success: boolean; error?: string; warnings?: string[] } => {
       try {
-        const workflow = JSON.parse(json) as WorkflowDefinition;
+        const raw = JSON.parse(json) as Record<string, unknown>;
+        const warnings: string[] = [];
 
-        // Import even if there are validation errors (missing functions show as red)
+        // Check for common issues and warn
+        const rawNodes = raw.nodes as
+          | Array<Record<string, unknown>>
+          | undefined;
+        if (rawNodes?.some((n) => !n.position)) {
+          warnings.push(
+            "Some nodes were missing position data - auto-positioned",
+          );
+        }
+        if (raw.flow && (raw.flow as Record<string, unknown>).id && !raw.id) {
+          warnings.push(
+            "Legacy format detected (id/name in flow) - auto-migrated",
+          );
+        }
+
+        // Validate and normalize
+        const workflow = validateAndNormalizeWorkflow(raw);
+
+        // Import nodes (missing functions show as red)
         const newNodes = workflow.nodes.map((n) => {
           const hasError = !registeredFunctions.has(n.functionId);
           return workflowNodeToReactFlowNode(n, hasError);
         });
 
-        const newEdges = workflow.edges.map(workflowEdgeToReactFlowEdge);
+        const newEdges = workflow.edges.map((e, i) =>
+          workflowEdgeToReactFlowEdge(e, i),
+        );
+
+        // Set importing flag to suppress dirty state from React Flow's internal changes
+        isImportingRef.current = true;
 
         setNodes(newNodes);
         setEdges(newEdges);
@@ -299,8 +461,17 @@ export function useFlowEditor(
         setSelectedNodeId(null);
         setIsDirty(false);
 
-        return { success: true };
+        // Reset importing flag after a microtask to allow React Flow to process changes
+        queueMicrotask(() => {
+          isImportingRef.current = false;
+        });
+
+        return {
+          success: true,
+          warnings: warnings.length > 0 ? warnings : undefined,
+        };
       } catch (e) {
+        isImportingRef.current = false;
         return {
           success: false,
           error: e instanceof Error ? e.message : "Invalid JSON",

@@ -1,0 +1,58 @@
+{
+  "id": "webhook-example",
+  "name": "Webhook to API Example",
+  "description": "Receives webhook data and calls an external API",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "webhook-trigger",
+      "functionId": "http.webhook",
+      "params": {
+        "outputKey": "webhookData",
+        "method": "POST",
+        "validateSecret": true,
+        "secretKey": "WEBHOOK_SECRET"
+      },
+      "position": { "x": 100, "y": 150 }
+    },
+    {
+      "id": "log-webhook",
+      "functionId": "core.log",
+      "params": {
+        "messageKey": "webhookData"
+      },
+      "position": { "x": 350, "y": 150 }
+    },
+    {
+      "id": "call-api",
+      "functionId": "http.post",
+      "params": {
+        "url": "{{API_URL}}/process",
+        "bodyKey": "webhookData",
+        "outputKey": "apiResponse"
+      },
+      "position": { "x": 600, "y": 150 }
+    },
+    {
+      "id": "log-response",
+      "functionId": "core.log",
+      "params": {
+        "message": "API call completed",
+        "messageKey": "apiResponse"
+      },
+      "position": { "x": 850, "y": 150 }
+    }
+  ],
+  "edges": [
+    { "from": "webhook-trigger", "to": "log-webhook", "action": "default" },
+    { "from": "log-webhook", "to": "call-api", "action": "default" },
+    { "from": "call-api", "to": "log-response", "action": "success" }
+  ],
+  "flow": {
+    "startNodeId": "webhook-trigger",
+    "envs": {
+      "API_URL": "https://api.example.com",
+      "WEBHOOK_SECRET": "change-me-in-production"
+    }
+  }
+}
