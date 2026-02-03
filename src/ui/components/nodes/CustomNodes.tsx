@@ -4,10 +4,11 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { AlertTriangle, Box, FlaskConical } from "lucide-react";
+import { AlertTriangle, Box, FlaskConical, Layers } from "lucide-react";
 import { registry } from "../../../registry";
 import * as LucideIcons from "lucide-react";
 import type { ExecutionStatus } from "../../hooks/useDebugger";
+import type { NodeHandle } from "../../../schema/types";
 
 // ============================================================================
 // Function Node
@@ -22,6 +23,12 @@ interface FunctionNodeData {
   executionStatus?: ExecutionStatus;
   /** Whether this node has mock values configured */
   hasMock?: boolean;
+  /** Custom handles for cluster root nodes */
+  handles?: NodeHandle[];
+  /** Whether this is a sub-node */
+  isSubNode?: boolean;
+  /** Parent node ID for sub-nodes */
+  parentId?: string;
 }
 
 // Dynamic icon component - renders the appropriate Lucide icon by name
@@ -173,3 +180,189 @@ export const ErrorNode = memo(({ data, selected }: NodeProps) => {
 });
 
 ErrorNode.displayName = "ErrorNode";
+
+// ============================================================================
+// Cluster Root Node (multi-output handles)
+// ============================================================================
+
+// Default handles for cluster root nodes
+const DEFAULT_CLUSTER_HANDLES: NodeHandle[] = [
+  { id: "a", type: "source", label: "A" },
+  { id: "b", type: "source", label: "B" },
+];
+
+// Handle colors for visual differentiation
+const HANDLE_COLORS = [
+  "bg-purple-500 hover:bg-purple-600",
+  "bg-cyan-500 hover:bg-cyan-600",
+  "bg-amber-500 hover:bg-amber-600",
+  "bg-emerald-500 hover:bg-emerald-600",
+  "bg-rose-500 hover:bg-rose-600",
+];
+
+export const ClusterRootNode = memo(({ data, selected }: NodeProps) => {
+  const nodeData = data as unknown as FunctionNodeData;
+  const metadata = registry.get(nodeData.functionId)?.metadata;
+  const borderStyles = getExecutionStyles(nodeData.executionStatus, selected);
+
+  // Get handles from node data or use defaults
+  const subNodeHandles = (nodeData.handles ?? DEFAULT_CLUSTER_HANDLES).filter(
+    (h) => h.type === "source",
+  );
+
+  // Calculate handle positions evenly spaced along the bottom edge
+  const handleSpacing = 100 / (subNodeHandles.length + 1);
+
+  return (
+    <div
+      className={`
+        px-4 py-2 pb-4 rounded-lg shadow-md border-2 min-w-37.5
+        bg-gradient-to-br from-purple-50 to-white dark:from-purple-900/20 dark:to-gray-800
+        ${borderStyles}
+        transition-all duration-150
+      `}
+    >
+      {/* Input handle (left) */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-gray-400! hover:bg-blue-500!"
+      />
+
+      <div className="flex items-center gap-2">
+        <div
+          className={`
+          p-1 rounded text-purple-600 dark:text-purple-400
+          ${
+            nodeData.executionStatus === "running"
+              ? "bg-purple-100 dark:bg-purple-900/50"
+              : nodeData.executionStatus === "success"
+                ? "bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400"
+                : nodeData.executionStatus === "error"
+                  ? "bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400"
+                  : "bg-purple-100 dark:bg-purple-900/30"
+          }
+        `}
+        >
+          <Layers className="w-4 h-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">
+              {nodeData.label}
+            </span>
+            {nodeData.hasMock && (
+              <FlaskConical className="w-3 h-3 text-purple-500 shrink-0" />
+            )}
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+            {metadata?.name ?? nodeData.functionId}
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-node handle indicators (bottom bar) */}
+      <div className="flex items-center justify-center gap-1 mt-2 pt-2 border-t border-purple-200 dark:border-purple-700">
+        {subNodeHandles.map((handle, idx) => (
+          <div
+            key={handle.id}
+            className={`px-2 py-0.5 text-xs rounded ${HANDLE_COLORS[idx % HANDLE_COLORS.length].split(" ")[0]} text-white`}
+            title={handle.label ?? handle.id}
+          >
+            {handle.label ?? handle.id}
+          </div>
+        ))}
+      </div>
+
+      {/* Main output handle (right) - goes to next node after cluster completes */}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="output"
+        className="w-3 h-3 bg-gray-400! hover:bg-blue-500!"
+      />
+
+      {/* Sub-node handles (bottom) - connect to sub-nodes that execute with this node */}
+      {subNodeHandles.map((handle, idx) => (
+        <Handle
+          key={handle.id}
+          type="source"
+          position={Position.Bottom}
+          id={handle.id}
+          className={`w-3 h-3 ${HANDLE_COLORS[idx % HANDLE_COLORS.length]}!`}
+          style={{
+            left: `${handleSpacing * (idx + 1)}%`,
+          }}
+          title={handle.label ?? handle.id}
+        />
+      ))}
+    </div>
+  );
+});
+
+ClusterRootNode.displayName = "ClusterRootNode";
+
+// ============================================================================
+// Sub-Node (attached to cluster root)
+// ============================================================================
+
+export const SubNode = memo(({ data, selected }: NodeProps) => {
+  const nodeData = data as unknown as FunctionNodeData;
+  const metadata = registry.get(nodeData.functionId)?.metadata;
+  const borderStyles = getExecutionStyles(nodeData.executionStatus, selected);
+
+  return (
+    <div
+      className={`
+        px-4 py-2 pt-4 rounded-lg shadow-md border-2 min-w-37.5
+        bg-gradient-to-br from-cyan-50 to-white dark:from-cyan-900/20 dark:to-gray-800
+        border-dashed
+        ${borderStyles}
+        transition-all duration-150
+      `}
+    >
+      {/* Input handle from cluster root (top) */}
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="w-3 h-3 bg-cyan-400! hover:bg-cyan-500! border-2 border-white!"
+      />
+
+      <div className="flex items-center gap-2">
+        <div
+          className={`
+          p-1 rounded text-cyan-600 dark:text-cyan-400
+          ${
+            nodeData.executionStatus === "running"
+              ? "bg-cyan-100 dark:bg-cyan-900/50"
+              : nodeData.executionStatus === "success"
+                ? "bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400"
+                : nodeData.executionStatus === "error"
+                  ? "bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400"
+                  : "bg-cyan-100 dark:bg-cyan-900/30"
+          }
+        `}
+        >
+          <DynamicIcon name={metadata?.icon} className="w-4 h-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">
+              {nodeData.label}
+            </span>
+            {nodeData.hasMock && (
+              <FlaskConical className="w-3 h-3 text-purple-500 shrink-0" />
+            )}
+          </div>
+          <div className="text-xs text-cyan-600 dark:text-cyan-400 truncate flex items-center gap-1">
+            <span className="opacity-60">sub-node</span>
+            <span>•</span>
+            <span>{metadata?.name ?? nodeData.functionId}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+SubNode.displayName = "SubNode";

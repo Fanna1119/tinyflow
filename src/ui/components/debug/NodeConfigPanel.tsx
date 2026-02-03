@@ -4,9 +4,22 @@
  */
 
 import { useState } from "react";
-import { X, AlertTriangle, Settings, Code, FlaskConical } from "lucide-react";
+import {
+  X,
+  AlertTriangle,
+  Settings,
+  Code,
+  FlaskConical,
+  Layers,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { registry } from "../../../registry";
-import type { FunctionParameter } from "../../../schema/types";
+import type {
+  FunctionParameter,
+  NodeType,
+  NodeHandle,
+} from "../../../schema/types";
 import type { MockValue } from "../../../compiler";
 
 interface NodeConfigPanelProps {
@@ -23,6 +36,18 @@ interface NodeConfigPanelProps {
   testValue?: MockValue;
   /** Callback to update test value */
   onUpdateTestValue?: (value: MockValue | null) => void;
+  /** Current node type (default, clusterRoot, subNode) */
+  nodeType?: NodeType;
+  /** Current handles for cluster root nodes */
+  handles?: NodeHandle[];
+  /** Convert node to cluster root */
+  onConvertToClusterRoot?: () => void;
+  /** Convert cluster root back to regular node */
+  onConvertToRegularNode?: () => void;
+  /** Add a handle to cluster root */
+  onAddHandle?: (label?: string) => void;
+  /** Remove a handle from cluster root */
+  onRemoveHandle?: (handleId: string) => void;
 }
 
 type TabType = "params" | "test";
@@ -39,6 +64,12 @@ export function NodeConfigPanel({
   onDelete,
   testValue,
   onUpdateTestValue,
+  nodeType,
+  handles,
+  onConvertToClusterRoot,
+  onConvertToRegularNode,
+  onAddHandle,
+  onRemoveHandle,
 }: NodeConfigPanelProps) {
   const metadata = registry.get(functionId)?.metadata;
   const [localParams, setLocalParams] = useState(params);
@@ -257,6 +288,98 @@ export function NodeConfigPanel({
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {metadata.description}
                 </p>
+              )}
+            </div>
+
+            {/* Cluster Controls */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Layers className="w-4 h-4 text-purple-500" />
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Cluster Node
+                </label>
+              </div>
+
+              {nodeType === "clusterRoot" ? (
+                <div className="space-y-3">
+                  <div className="text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 px-2 py-1.5 rounded">
+                    This is a Cluster Root with {handles?.length ?? 0} sub-node
+                    handles
+                  </div>
+
+                  {/* Handle list */}
+                  {handles && handles.length > 0 && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                        Sub-node Handles
+                      </label>
+                      {handles.map((handle, index) => (
+                        <div
+                          key={handle.id}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{
+                              backgroundColor: [
+                                "#a855f7",
+                                "#22c55e",
+                                "#3b82f6",
+                                "#f59e0b",
+                                "#ef4444",
+                              ][index % 5],
+                            }}
+                          />
+                          <span className="font-mono text-gray-700 dark:text-gray-300">
+                            {handle.label ?? handle.id}
+                          </span>
+                          <button
+                            onClick={() => onRemoveHandle?.(handle.id)}
+                            className="ml-auto p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                            title="Remove handle"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add handle button */}
+                  <button
+                    onClick={() => onAddHandle?.()}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Handle
+                  </button>
+
+                  {/* Convert back to regular */}
+                  <button
+                    onClick={onConvertToRegularNode}
+                    className="w-full px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  >
+                    Convert to Regular Node
+                  </button>
+                </div>
+              ) : nodeType === "subNode" ? (
+                <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1.5 rounded">
+                  This is a Sub-Node (connected to a cluster root)
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Convert this node to a cluster root to add parallel
+                    sub-nodes.
+                  </p>
+                  <button
+                    onClick={onConvertToClusterRoot}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg transition-colors"
+                  >
+                    <Layers className="w-4 h-4" />
+                    Convert to Cluster Root
+                  </button>
+                </div>
               )}
             </div>
 

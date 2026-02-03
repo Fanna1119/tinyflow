@@ -3,29 +3,29 @@
  * Combines React Flow with sidebar and config panel
  */
 
-import { useCallback, useState, useMemo, useEffect, useRef } from "react";
+import { useCallback, useState, useMemo, useEffect } from "react";
 import type { Node } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
 import { Sidebar } from "./Sidebar";
+import { NodeConfigPanel } from "./NodeConfigPanel";
 import { Toolbar } from "./Toolbar";
+import { DebugPanel } from "./DebugPanel";
+import { SettingsModal } from "./SettingsModal";
 import { createEmptyWorkflow } from "./WorkflowTabs";
-import { NodeConfigPanel } from "../debug/NodeConfigPanel";
-import { DebugPanel } from "../debug/DebugPanel";
-import { SettingsModal } from "../modals/SettingsModal";
-import { BundleModal } from "../modals/BundleModal";
-import { FlowCanvas } from "../canvas/FlowCanvas";
-import { useFlowEditor } from "../../hooks/useFlowEditor";
-import { useDebugger } from "../../hooks/useDebugger";
-import { useFileOperations } from "../../hooks/useFileOperations";
-import { useWorkflowExecution } from "../../hooks/useWorkflowExecution";
-import type { WorkflowDefinition } from "../../../schema/types";
+import { BundleModal } from "./BundleModal";
+import { FlowCanvas } from "./FlowCanvas";
+import { useFlowEditor } from "../hooks/useFlowEditor";
+import { useDebugger } from "../hooks/useDebugger";
+import { useFileOperations } from "../hooks/useFileOperations";
+import { useWorkflowExecution } from "../hooks/useWorkflowExecution";
+import type { WorkflowDefinition } from "../../schema/types";
 import {
   type TinyFlowSettings,
   DEFAULT_SETTINGS,
   initSettingsAccess,
   loadSettings,
-} from "../../utils/settings";
+} from "../utils/settings";
 
 interface FlowEditorProps {
   initialWorkflow?: WorkflowDefinition;
@@ -43,9 +43,6 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
   const [showBundleModal, setShowBundleModal] = useState(false);
   const [editorSettings, setEditorSettings] =
     useState<TinyFlowSettings>(DEFAULT_SETTINGS);
-
-  // Create ref for file input
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // File operations hook
   const fileOps = useFileOperations({
@@ -149,7 +146,7 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
     <div className="flex h-screen bg-gray-100 dark:bg-gray-950">
       {/* Hidden file input for import */}
       <input
-        ref={fileInputRef}
+        ref={fileOps.fileInputRef}
         type="file"
         accept=".json"
         onChange={fileOps.handleFileChange}

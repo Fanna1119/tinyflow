@@ -24,4 +24,13 @@ export type { LogEntry } from "./debug";
 export { BundleModal, SettingsModal } from "./modals";
 
 // Node components
-export { FunctionNode, ErrorNode, nodeTypes } from "./nodes";
+export {
+  FunctionNode,
+  ErrorNode,
+  ClusterRootNode,
+  SubNode,
+  nodeTypes,
+} from "./nodes";
+
+// Edge components
+export { SubNodeEdge } from "./edges";

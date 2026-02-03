@@ -1,21 +1,23 @@
 {
   "id": "example-http-api",
   "name": "HTTP API Workflow",
-  "description": "Fetches data from an API and processes it",
+  "description": "Fetches data from an API and processes it using cluster nodes",
   "version": "1.0.0",
   "nodes": [
     {
       "id": "start",
+      "type": "regular",
       "functionId": "core.start",
       "params": {},
       "position": {
         "x": 100,
         "y": 150
       },
-      "label": "core.start"
+      "label": "Start"
     },
     {
       "id": "fetch-todo",
+      "type": "regular",
       "functionId": "http.get",
       "params": {
         "url": "https://jsonplaceholder.typicode.com/todos/2",
@@ -25,58 +27,106 @@
         "x": 300,
         "y": 150
       },
-      "label": "http.get"
+      "label": "Fetch Todo"
     },
     {
-      "id": "extract-title",
-      "functionId": "transform.map",
-      "params": {
-        "inputKey": "todo",
-        "path": "title",
-        "outputKey": "todoTitle"
-      },
+      "id": "process-data-cluster",
+      "type": "cluster",
+      "label": "Process Data",
+      "description": "Extracts and formats the todo data",
       "position": {
-        "x": 500,
-        "y": 150
+        "x": 550,
+        "y": 100
       },
-      "label": "transform.map"
+      "entryNodeId": "extract-title",
+      "exitNodeIds": ["format-message"],
+      "collapsed": false,
+      "subNodes": [
+        {
+          "id": "extract-title",
+          "type": "regular",
+          "functionId": "transform.map",
+          "params": {
+            "inputKey": "todo",
+            "path": "title",
+            "outputKey": "todoTitle"
+          },
+          "position": {
+            "x": 50,
+            "y": 50
+          },
+          "label": "Extract Title"
+        },
+        {
+          "id": "format-message",
+          "type": "regular",
+          "functionId": "transform.template",
+          "params": {
+            "template": "Todo item: {{todoTitle}}",
+            "outputKey": "message"
+          },
+          "position": {
+            "x": 50,
+            "y": 130
+          },
+          "label": "Format Message"
+        }
+      ],
+      "internalEdges": [
+        {
+          "from": "extract-title",
+          "to": "format-message",
+          "action": "default"
+        }
+      ]
     },
     {
-      "id": "format-message",
-      "functionId": "transform.template",
-      "params": {
-        "template": "Todo item: {{todoTitle}}",
-        "outputKey": "message"
-      },
+      "id": "output-cluster",
+      "type": "cluster",
+      "label": "Output Results",
+      "description": "Logs and returns the final message",
       "position": {
-        "x": 700,
-        "y": 150
+        "x": 850,
+        "y": 100
       },
-      "label": "transform.template"
-    },
-    {
-      "id": "log-message",
-      "functionId": "core.log",
-      "params": {
-        "key": "message"
-      },
-      "position": {
-        "x": 900,
-        "y": 150
-      },
-      "label": "core.log"
-    },
-    {
-      "id": "end",
-      "functionId": "core.end",
-      "params": {
-        "outputKey": "message"
-      },
-      "position": {
-        "x": 1100,
-        "y": 150
-      },
-      "label": "core.end"
+      "entryNodeId": "log-message",
+      "exitNodeIds": ["end"],
+      "collapsed": false,
+      "subNodes": [
+        {
+          "id": "log-message",
+          "type": "regular",
+          "functionId": "core.log",
+          "params": {
+            "key": "message"
+          },
+          "position": {
+            "x": 50,
+            "y": 50
+          },
+          "label": "Log Message"
+        },
+        {
+          "id": "end",
+          "type": "regular",
+          "functionId": "core.end",
+          "params": {
+            "outputKey": "message"
+          },
+          "position": {
+            "x": 50,
+            "y": 130
+          },
+          "label": "End"
+        }
+      ],
+      "internalEdges": [
+        {
+          "from": "log-message",
+          "to": "end",
+          "action": "default"
+        }
+      ]
     }
   ],
   "edges": [
@@ -87,22 +137,12 @@
     },
     {
       "from": "fetch-todo",
-      "to": "extract-title",
+      "to": "process-data-cluster",
       "action": "success"
     },
     {
-      "from": "extract-title",
-      "to": "format-message",
-      "action": "default"
-    },
-    {
-      "from": "format-message",
-      "to": "log-message",
-      "action": "default"
-    },
-    {
-      "from": "log-message",
-      "to": "end",
+      "from": "process-data-cluster",
+      "to": "output-cluster",
       "action": "default"
     }
   ],
@@ -110,6 +150,6 @@
     "startNodeId": "start"
   },
   "metadata": {
-    "updatedAt": "2026-02-02T18:53:06.868Z"
+    "updatedAt": "2026-02-03T10:00:00.000Z"
   }
 }

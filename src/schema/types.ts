@@ -21,6 +21,25 @@ export interface NodeRuntime {
   retryDelay?: number;
 }
 
+/**
+ * Node handle definition for multi-output nodes
+ */
+export interface NodeHandle {
+  /** Unique handle ID (e.g., 'a', 'b', 'success', 'error') */
+  id: string;
+  /** Handle type - source (output) or target (input) */
+  type: "source" | "target";
+  /** Optional display label */
+  label?: string;
+  /** Position on the node (default: right for source, left for target) */
+  position?: "top" | "right" | "bottom" | "left";
+}
+
+/**
+ * Node type classification
+ */
+export type NodeType = "default" | "clusterRoot" | "subNode";
+
 export interface WorkflowNode {
   /** Unique identifier for this node instance */
   id: string;
@@ -36,6 +55,12 @@ export interface WorkflowNode {
   position: NodePosition;
   /** Optional display label */
   label?: string;
+  /** Node type for cluster support */
+  nodeType?: NodeType;
+  /** Custom handles for multi-output nodes (cluster roots) */
+  handles?: NodeHandle[];
+  /** Parent node ID if this is a sub-node */
+  parentId?: string;
 }
 
 // ============================================================================
@@ -43,6 +68,11 @@ export interface WorkflowNode {
 // ============================================================================
 
 export type EdgeAction = "default" | "success" | "error" | "condition";
+
+/**
+ * Edge type for visual differentiation
+ */
+export type EdgeType = "default" | "subnode";
 
 export interface WorkflowEdge {
   /** Source node ID */
@@ -53,6 +83,12 @@ export interface WorkflowEdge {
   action: EdgeAction;
   /** Optional condition expression for conditional edges */
   condition?: string;
+  /** Source handle ID for multi-output nodes */
+  sourceHandle?: string;
+  /** Target handle ID for multi-input nodes */
+  targetHandle?: string;
+  /** Edge type for styling (default or subnode) */
+  edgeType?: EdgeType;
 }
 
 // ============================================================================

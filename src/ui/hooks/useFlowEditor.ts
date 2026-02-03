@@ -19,9 +19,20 @@ import type {
   WorkflowNode,
   WorkflowEdge,
   EdgeAction,
+  NodeType,
+  NodeHandle,
 } from "../../schema/types";
 import { registry } from "../../registry";
 import { validateWorkflow } from "../../schema/validator";
+
+// Handle colors for sub-node edges (must match CustomNodes.tsx)
+const HANDLE_COLOR_KEYS = [
+  "purple",
+  "cyan",
+  "amber",
+  "emerald",
+  "rose",
+] as const;
 
 // ============================================================================
 // Types
@@ -79,6 +90,18 @@ export interface FlowEditorActions {
   updateMeta: (meta: Partial<FlowEditorState["workflowMeta"]>) => void;
   /** Validate current workflow */
   validate: () => { valid: boolean; errors: string[] };
+  /** Convert a node to a cluster root */
+  convertToClusterRoot: (nodeId: string) => void;
+  /** Convert a cluster root back to a regular node */
+  convertToRegularNode: (nodeId: string) => void;
+  /** Add a handle to a cluster root node */
+  addClusterHandle: (nodeId: string, label?: string) => void;
+  /** Remove a handle from a cluster root node */
+  removeClusterHandle: (nodeId: string, handleId: string) => void;
+  /** Get node type info */
+  getNodeType: (nodeId: string) => NodeType | undefined;
+  /** Get handles for a node */
+  getNodeHandles: (nodeId: string) => NodeHandle[] | undefined;
 }
 
 // ============================================================================
@@ -89,13 +112,23 @@ function generateId(): string {
   return `node-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+/**
+ * Get node type string for React Flow based on workflow node properties
+ */
+function getReactFlowNodeType(node: WorkflowNode, hasError: boolean): string {
+  if (hasError) return "error";
+  if (node.nodeType === "clusterRoot") return "clusterRoot";
+  if (node.nodeType === "subNode") return "subNode";
+  return "function";
+}
+
 function workflowNodeToReactFlowNode(
   node: WorkflowNode,
   hasError: boolean,
 ): Node {
   return {
     id: node.id,
-    type: hasError ? "error" : "function",
+    type: getReactFlowNodeType(node, hasError),
     position: node.position,
     data: {
       label: node.label ?? node.functionId,
@@ -104,16 +137,60 @@ function workflowNodeToReactFlowNode(
       runtime: node.runtime,
       envs: node.envs,
       hasError,
+      // Cluster-specific data
+      handles: node.handles,
+      nodeType: node.nodeType,
+      parentId: node.parentId,
+      isSubNode: node.nodeType === "subNode",
     },
   };
 }
 
-function workflowEdgeToReactFlowEdge(edge: WorkflowEdge, index: number): Edge {
-  // Use a combination of from-to-action plus index to ensure uniqueness
-  return {
+function workflowEdgeToReactFlowEdge(
+  edge: WorkflowEdge,
+  index: number,
+  nodes?: WorkflowNode[],
+): Edge {
+  const isSubNodeEdge = edge.edgeType === "subnode";
+
+  // Determine color based on sourceHandle index
+  let handleColorIndex = 0;
+  if (edge.sourceHandle && nodes) {
+    const sourceNode = nodes.find((n) => n.id === edge.from);
+    if (sourceNode?.handles) {
+      const handleIndex = sourceNode.handles.findIndex(
+        (h) => h.id === edge.sourceHandle,
+      );
+      if (handleIndex >= 0) {
+        handleColorIndex = handleIndex;
+      }
+    }
+  }
+
+  // Base edge properties
+  const baseEdge: Edge = {
     id: `${edge.from}-${edge.to}-${edge.action}-${index}`,
     source: edge.from,
     target: edge.to,
+    sourceHandle: edge.sourceHandle ?? null,
+    targetHandle: edge.targetHandle ?? null,
+  };
+
+  // Sub-node edge styling
+  if (isSubNodeEdge) {
+    return {
+      ...baseEdge,
+      type: "subnode",
+      data: {
+        color: HANDLE_COLOR_KEYS[handleColorIndex % HANDLE_COLOR_KEYS.length],
+        label: edge.action !== "default" ? edge.action : undefined,
+      },
+    };
+  }
+
+  // Regular edge styling
+  return {
+    ...baseEdge,
     label: edge.action !== "default" ? edge.action : undefined,
     type: "smoothstep",
     animated: edge.action === "error",
@@ -122,7 +199,7 @@ function workflowEdgeToReactFlowEdge(edge: WorkflowEdge, index: number): Edge {
 }
 
 function reactFlowNodeToWorkflowNode(node: Node): WorkflowNode {
-  return {
+  const workflowNode: WorkflowNode = {
     id: node.id,
     functionId: node.data.functionId as string,
     params: (node.data.params as Record<string, unknown>) ?? {},
@@ -131,6 +208,24 @@ function reactFlowNodeToWorkflowNode(node: Node): WorkflowNode {
     runtime: node.data.runtime as WorkflowNode["runtime"],
     envs: node.data.envs as Record<string, string>,
   };
+
+  // Add cluster-specific properties if present
+  const nodeType = node.data.nodeType as NodeType | undefined;
+  if (nodeType && nodeType !== "default") {
+    workflowNode.nodeType = nodeType;
+  }
+
+  const handles = node.data.handles as NodeHandle[] | undefined;
+  if (handles && handles.length > 0) {
+    workflowNode.handles = handles;
+  }
+
+  const parentId = node.data.parentId as string | undefined;
+  if (parentId) {
+    workflowNode.parentId = parentId;
+  }
+
+  return workflowNode;
 }
 
 function reactFlowEdgeToWorkflowEdge(edge: Edge): WorkflowEdge {
@@ -140,15 +235,38 @@ function reactFlowEdgeToWorkflowEdge(edge: Edge): WorkflowEdge {
     "error",
     "condition",
   ];
-  const edgeLabel = edge.label as string;
-  const action = validActions.includes(edgeLabel as EdgeAction)
-    ? (edgeLabel as EdgeAction)
-    : "default";
-  return {
+
+  // Get action from label or edge data
+  let action: EdgeAction = "default";
+  if (edge.label && validActions.includes(edge.label as EdgeAction)) {
+    action = edge.label as EdgeAction;
+  } else if (
+    edge.data?.label &&
+    validActions.includes(edge.data.label as EdgeAction)
+  ) {
+    action = edge.data.label as EdgeAction;
+  }
+
+  const workflowEdge: WorkflowEdge = {
     from: edge.source,
     to: edge.target,
     action,
   };
+
+  // Add handle references if present
+  if (edge.sourceHandle) {
+    workflowEdge.sourceHandle = edge.sourceHandle;
+  }
+  if (edge.targetHandle) {
+    workflowEdge.targetHandle = edge.targetHandle;
+  }
+
+  // Mark as subnode edge if using subnode edge type
+  if (edge.type === "subnode") {
+    workflowEdge.edgeType = "subnode";
+  }
+
+  return workflowEdge;
 }
 
 /**
@@ -210,7 +328,7 @@ function validateAndNormalizeWorkflow(
   const nodes: WorkflowNode[] = rawNodes!.map((node, index) => {
     const position = node.position as { x: number; y: number } | undefined;
 
-    return {
+    const workflowNode: WorkflowNode = {
       id: node.id as string,
       functionId: node.functionId as string,
       params: (node.params as Record<string, unknown>) ?? {},
@@ -222,6 +340,19 @@ function validateAndNormalizeWorkflow(
       runtime: node.runtime as WorkflowNode["runtime"],
       envs: (node.envs ?? node.env) as Record<string, string> | undefined,
     };
+
+    // Preserve cluster-specific properties
+    if (node.nodeType) {
+      workflowNode.nodeType = node.nodeType as NodeType;
+    }
+    if (node.handles) {
+      workflowNode.handles = node.handles as NodeHandle[];
+    }
+    if (node.parentId) {
+      workflowNode.parentId = node.parentId as string;
+    }
+
+    return workflowNode;
   });
 
   // Validate each node has required fields
@@ -245,11 +376,24 @@ function validateAndNormalizeWorkflow(
     const key = `${edge.from}-${edge.to}-${edge.action ?? "default"}`;
     if (!seenEdges.has(key)) {
       seenEdges.add(key);
-      edges.push({
+      const workflowEdge: WorkflowEdge = {
         from: edge.from as string,
         to: edge.to as string,
         action: (edge.action as EdgeAction) ?? "default",
-      });
+      };
+
+      // Preserve handle references
+      if (edge.sourceHandle) {
+        workflowEdge.sourceHandle = edge.sourceHandle as string;
+      }
+      if (edge.targetHandle) {
+        workflowEdge.targetHandle = edge.targetHandle as string;
+      }
+      if (edge.edgeType) {
+        workflowEdge.edgeType = edge.edgeType as WorkflowEdge["edgeType"];
+      }
+
+      edges.push(workflowEdge);
     }
   }
 
@@ -295,7 +439,7 @@ export function useFlowEditor(
   const [edges, setEdges] = useState<Edge[]>(() => {
     if (!initialWorkflow) return [];
     return initialWorkflow.edges.map((e, i) =>
-      workflowEdgeToReactFlowEdge(e, i),
+      workflowEdgeToReactFlowEdge(e, i, initialWorkflow.nodes),
     );
   });
 
@@ -332,26 +476,137 @@ export function useFlowEditor(
   }, []);
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    setEdges((eds) => applyEdgeChanges(changes, eds));
+    // Check for edge removals that might affect sub-nodes
+    const removedEdges: string[] = [];
+    for (const change of changes) {
+      if (change.type === "remove") {
+        removedEdges.push(change.id);
+      }
+    }
+
+    // If there are removed edges, check if any are subnode edges
+    if (removedEdges.length > 0) {
+      setEdges((currentEdges) => {
+        // Find which edges are being removed
+        const edgesToRemove = currentEdges.filter((e) =>
+          removedEdges.includes(e.id),
+        );
+
+        // Find sub-node edges being removed
+        const subnodeEdgesToRemove = edgesToRemove.filter(
+          (e) => e.type === "subnode",
+        );
+
+        // If any subnode edges are removed, reset those target nodes to regular nodes
+        if (subnodeEdgesToRemove.length > 0) {
+          const targetNodeIds = subnodeEdgesToRemove.map((e) => e.target);
+          setNodes((nds) =>
+            nds.map((n) =>
+              targetNodeIds.includes(n.id)
+                ? {
+                    ...n,
+                    type: "function",
+                    data: {
+                      ...n.data,
+                      nodeType: undefined,
+                      parentId: undefined,
+                      isSubNode: undefined,
+                    },
+                  }
+                : n,
+            ),
+          );
+        }
+
+        return applyEdgeChanges(changes, currentEdges);
+      });
+    } else {
+      setEdges((eds) => applyEdgeChanges(changes, eds));
+    }
+
     // Don't mark dirty during import
     if (!isImportingRef.current) {
       setIsDirty(true);
     }
   }, []);
 
-  const onConnect = useCallback((connection: Connection) => {
-    setEdges((eds) =>
-      addEdge(
-        {
-          ...connection,
-          type: "smoothstep",
-          label: "default",
-        },
-        eds,
-      ),
-    );
-    setIsDirty(true);
-  }, []);
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      setNodes((currentNodes) => {
+        // Check if source is a cluster root with a sourceHandle
+        const sourceNode = currentNodes.find((n) => n.id === connection.source);
+        const targetNode = currentNodes.find((n) => n.id === connection.target);
+
+        const isClusterRootSource =
+          sourceNode?.data?.nodeType === "clusterRoot" ||
+          sourceNode?.type === "clusterRoot";
+
+        // Get the cluster root's handles to check if this sourceHandle is a sub-node handle
+        const clusterHandles =
+          (sourceNode?.data?.handles as NodeHandle[]) ?? [];
+        const sourceHandleId = connection.sourceHandle;
+
+        // Only consider it a sub-node connection if:
+        // 1. Source is a cluster root
+        // 2. The sourceHandle matches one of the defined sub-node handles (bottom handles)
+        // The right-side output handle has no sourceHandle or sourceHandle === null
+        const isSubNodeHandle =
+          sourceHandleId != null &&
+          clusterHandles.some((h) => h.id === sourceHandleId);
+        const isSubNodeConnection = isClusterRootSource && isSubNodeHandle;
+
+        // If connecting from cluster root's bottom handle to a regular node, make it a sub-node
+        if (isSubNodeConnection && targetNode?.type === "function") {
+          // Update target node to be a sub-node
+          return currentNodes.map((n) =>
+            n.id === connection.target
+              ? {
+                  ...n,
+                  type: "subNode",
+                  data: {
+                    ...n.data,
+                    nodeType: "subNode",
+                    parentId: connection.source,
+                    isSubNode: true,
+                  },
+                }
+              : n,
+          );
+        }
+
+        return currentNodes;
+      });
+
+      // Get current nodes state to determine edge type
+      setEdges((eds) => {
+        // We need to check if this is a sub-node edge by looking at source node's handles
+        const sourceNode = nodes.find((n) => n.id === connection.source);
+        const clusterHandles =
+          (sourceNode?.data?.handles as NodeHandle[]) ?? [];
+        const sourceHandleId = connection.sourceHandle;
+
+        // Only sub-node edges come from defined cluster handles (bottom)
+        const isSubNodeEdge =
+          sourceHandleId != null &&
+          clusterHandles.some((h) => h.id === sourceHandleId);
+
+        return addEdge(
+          {
+            ...connection,
+            type: isSubNodeEdge ? "subnode" : "smoothstep",
+            label: isSubNodeEdge ? undefined : "default",
+            data: isSubNodeEdge
+              ? { color: "purple", label: undefined }
+              : undefined,
+          },
+          eds,
+        );
+      });
+
+      setIsDirty(true);
+    },
+    [nodes],
+  );
 
   const addNode = useCallback(
     (functionId: string, position?: { x: number; y: number }) => {
@@ -542,6 +797,124 @@ export function useFlowEditor(
     };
   }, [exportWorkflow, registeredFunctions]);
 
+  // Cluster management actions
+  const convertToClusterRoot = useCallback((nodeId: string) => {
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === nodeId
+          ? {
+              ...n,
+              type: "clusterRoot",
+              data: {
+                ...n.data,
+                nodeType: "clusterRoot",
+                handles: [
+                  { id: "a", type: "source", label: "A" },
+                  { id: "b", type: "source", label: "B" },
+                ],
+              },
+            }
+          : n,
+      ),
+    );
+    setIsDirty(true);
+  }, []);
+
+  const convertToRegularNode = useCallback((nodeId: string) => {
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === nodeId
+          ? {
+              ...n,
+              type: "function",
+              data: {
+                ...n.data,
+                nodeType: undefined,
+                handles: undefined,
+                parentId: undefined,
+                isSubNode: undefined,
+              },
+            }
+          : n,
+      ),
+    );
+    // Also remove any subnode edges from this node
+    setEdges((eds) =>
+      eds.filter((e) => !(e.source === nodeId && e.type === "subnode")),
+    );
+    setIsDirty(true);
+  }, []);
+
+  const addClusterHandle = useCallback((nodeId: string, label?: string) => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id !== nodeId) return n;
+
+        const currentHandles = (n.data.handles as NodeHandle[]) ?? [];
+        const nextId = String.fromCharCode(
+          97 + currentHandles.length, // a, b, c, d...
+        );
+        const newHandle: NodeHandle = {
+          id: nextId,
+          type: "source",
+          label: label ?? nextId.toUpperCase(),
+        };
+
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            handles: [...currentHandles, newHandle],
+          },
+        };
+      }),
+    );
+    setIsDirty(true);
+  }, []);
+
+  const removeClusterHandle = useCallback(
+    (nodeId: string, handleId: string) => {
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id !== nodeId) return n;
+
+          const currentHandles = (n.data.handles as NodeHandle[]) ?? [];
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              handles: currentHandles.filter((h) => h.id !== handleId),
+            },
+          };
+        }),
+      );
+      // Remove edges using this handle
+      setEdges((eds) =>
+        eds.filter(
+          (e) => !(e.source === nodeId && e.sourceHandle === handleId),
+        ),
+      );
+      setIsDirty(true);
+    },
+    [],
+  );
+
+  const getNodeType = useCallback(
+    (nodeId: string): NodeType | undefined => {
+      const node = nodes.find((n) => n.id === nodeId);
+      return node?.data?.nodeType as NodeType | undefined;
+    },
+    [nodes],
+  );
+
+  const getNodeHandles = useCallback(
+    (nodeId: string): NodeHandle[] | undefined => {
+      const node = nodes.find((n) => n.id === nodeId);
+      return node?.data?.handles as NodeHandle[] | undefined;
+    },
+    [nodes],
+  );
+
   const state: FlowEditorState = {
     nodes,
     edges,
@@ -565,6 +938,12 @@ export function useFlowEditor(
     clear,
     updateMeta,
     validate,
+    convertToClusterRoot,
+    convertToRegularNode,
+    addClusterHandle,
+    removeClusterHandle,
+    getNodeType,
+    getNodeHandles,
   };
 
   return [state, actions];

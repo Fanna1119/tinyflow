@@ -1,0 +1,224 @@
+{
+  "id": "ai-agent-chatbot",
+  "name": "AI Agent Chatbot",
+  "description": "Chatbot that answers questions about text data using a vector store and an AI model. Demonstrates cluster nodes where an AI Agent coordinates LLM, vector store, memory, and tools.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "message": "Received user question"
+      },
+      "position": {
+        "x": -20,
+        "y": 120
+      },
+      "label": "User Question"
+    },
+    {
+      "id": "ai-agent",
+      "functionId": "core.log",
+      "params": {
+        "message": "AI Agent coordinating sub-systems to answer question"
+      },
+      "position": {
+        "x": 200,
+        "y": 0
+      },
+      "label": "AI Agent",
+      "nodeType": "clusterRoot",
+      "handles": [
+        {
+          "id": "llm",
+          "type": "source",
+          "label": "LLM"
+        },
+        {
+          "id": "vectorstore",
+          "type": "source",
+          "label": "Vector Store"
+        },
+        {
+          "id": "memory",
+          "type": "source",
+          "label": "Memory"
+        },
+        {
+          "id": "tools",
+          "type": "source",
+          "label": "Tools"
+        }
+      ]
+    },
+    {
+      "id": "llm-node",
+      "functionId": "llm.chat",
+      "params": {
+        "model": "gpt-4",
+        "prompt": "{{context}}\n\nQuestion: {{input.question}}\n\nAnswer the question based on the context provided.",
+        "temperature": 0.7,
+        "maxTokens": 1000
+      },
+      "position": {
+        "x": 0,
+        "y": 380
+      },
+      "label": "LLM (GPT-4)",
+      "nodeType": "subNode",
+      "parentId": "ai-agent"
+    },
+    {
+      "id": "vectorstore-node",
+      "functionId": "http.post",
+      "params": {
+        "url": "{{env.VECTORSTORE_URL}}/query",
+        "body": {
+          "query": "{{input.question}}",
+          "topK": 5
+        }
+      },
+      "position": {
+        "x": 300,
+        "y": 500
+      },
+      "label": "Vector Store",
+      "nodeType": "subNode",
+      "parentId": "ai-agent"
+    },
+    {
+      "id": "memory-node",
+      "functionId": "memory.get",
+      "params": {
+        "key": "conversation_history"
+      },
+      "position": {
+        "x": 520,
+        "y": 460
+      },
+      "label": "Conversation Memory",
+      "nodeType": "subNode",
+      "parentId": "ai-agent"
+    },
+    {
+      "id": "tools-node",
+      "functionId": "http.post",
+      "params": {
+        "url": "{{env.TOOLS_API}}/execute",
+        "body": {
+          "tool": "calculator",
+          "input": "{{input.toolInput}}"
+        }
+      },
+      "position": {
+        "x": 820,
+        "y": 400
+      },
+      "label": "External Tools",
+      "nodeType": "subNode",
+      "parentId": "ai-agent"
+    },
+    {
+      "id": "aggregate-response",
+      "functionId": "transform.merge",
+      "params": {
+        "keys": [
+          "llmResponse",
+          "vectorResults",
+          "memoryContext",
+          "toolOutput"
+        ]
+      },
+      "position": {
+        "x": 600,
+        "y": 120
+      },
+      "label": "Build Response"
+    },
+    {
+      "id": "save-memory",
+      "functionId": "memory.set",
+      "params": {
+        "key": "conversation_history",
+        "value": {
+          "question": "{{input.question}}",
+          "answer": "{{response}}"
+        }
+      },
+      "position": {
+        "x": 840,
+        "y": 140
+      },
+      "label": "Save to Memory"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "response"
+      },
+      "position": {
+        "x": 1080,
+        "y": 140
+      },
+      "label": "Return Answer"
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "ai-agent",
+      "action": "default"
+    },
+    {
+      "from": "ai-agent",
+      "to": "llm-node",
+      "action": "default",
+      "sourceHandle": "llm",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "ai-agent",
+      "to": "vectorstore-node",
+      "action": "default",
+      "sourceHandle": "vectorstore",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "ai-agent",
+      "to": "memory-node",
+      "action": "default",
+      "sourceHandle": "memory",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "ai-agent",
+      "to": "tools-node",
+      "action": "default",
+      "sourceHandle": "tools",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "aggregate-response",
+      "to": "save-memory",
+      "action": "default"
+    },
+    {
+      "from": "save-memory",
+      "to": "end",
+      "action": "default"
+    },
+    {
+      "from": "ai-agent",
+      "to": "aggregate-response",
+      "action": "default",
+      "sourceHandle": "output"
+    }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "updatedAt": "2026-02-03T15:54:56.023Z"
+  }
+}

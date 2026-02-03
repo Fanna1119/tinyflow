@@ -20,9 +20,15 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { nodeTypes } from "../nodes/nodeTypes";
+import { SubNodeEdge } from "../edges/SubNodeEdge";
 import { ValidationPanel } from "./ValidationPanel";
 import { RunningIndicator } from "./RunningIndicator";
 import type { TinyFlowSettings } from "../../utils/settings";
+
+// Edge types for cluster connections
+const edgeTypes = {
+  subnode: SubNodeEdge,
+};
 
 interface FlowCanvasProps {
   nodes: Node[];
@@ -33,6 +39,7 @@ interface FlowCanvasProps {
   onNodeClick: (event: React.MouseEvent, node: Node) => void;
   onPaneClick: () => void;
   onAddNode: (functionId: string, position: { x: number; y: number }) => void;
+  onMoveNodeToCluster?: (nodeId: string, clusterId: string) => boolean;
   settings: TinyFlowSettings;
   isRunning: boolean;
   validationErrors: string[];
@@ -48,6 +55,7 @@ export function FlowCanvas({
   onNodeClick,
   onPaneClick,
   onAddNode,
+  onMoveNodeToCluster,
   settings,
   isRunning,
   validationErrors,
@@ -81,6 +89,52 @@ export function FlowCanvas({
     [onAddNode],
   );
 
+  // Handle node drag stop - check if dropped onto a cluster
+  const onNodeDragStop = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      if (!onMoveNodeToCluster || !reactFlowInstance.current) return;
+
+      // Don't move cluster nodes into other clusters
+      if (node.type === "cluster") return;
+
+      // Find cluster nodes and check if this node overlaps any of them
+      const clusterNodes = nodes.filter(
+        (n) => n.type === "cluster" && n.id !== node.id,
+      );
+
+      for (const cluster of clusterNodes) {
+        // Get cluster bounds (position and size)
+        const clusterWidth = cluster.measured?.width ?? 200;
+        const clusterHeight = cluster.measured?.height ?? 150;
+
+        const clusterBounds = {
+          left: cluster.position.x,
+          right: cluster.position.x + clusterWidth,
+          top: cluster.position.y,
+          bottom: cluster.position.y + clusterHeight,
+        };
+
+        // Check if node center is within cluster bounds
+        const nodeWidth = node.measured?.width ?? 150;
+        const nodeHeight = node.measured?.height ?? 40;
+        const nodeCenterX = node.position.x + nodeWidth / 2;
+        const nodeCenterY = node.position.y + nodeHeight / 2;
+
+        if (
+          nodeCenterX >= clusterBounds.left &&
+          nodeCenterX <= clusterBounds.right &&
+          nodeCenterY >= clusterBounds.top &&
+          nodeCenterY <= clusterBounds.bottom
+        ) {
+          // Node was dropped onto this cluster
+          onMoveNodeToCluster(node.id, cluster.id);
+          break;
+        }
+      }
+    },
+    [nodes, onMoveNodeToCluster],
+  );
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -89,6 +143,7 @@ export function FlowCanvas({
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       onNodeClick={onNodeClick}
+      onNodeDragStop={onNodeDragStop}
       onPaneClick={onPaneClick}
       onDragOver={onDragOver}
       onDrop={onDrop}
@@ -96,9 +151,11 @@ export function FlowCanvas({
         reactFlowInstance.current = instance;
       }}
       nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
       fitView
       snapToGrid={settings.editor.snapToGrid}
       snapGrid={[settings.editor.gridSize, settings.editor.gridSize]}
+      deleteKeyCode={["Backspace", "Delete"]}
       defaultEdgeOptions={{
         type: "smoothstep",
         animated: false,
@@ -109,7 +166,12 @@ export function FlowCanvas({
       <Controls />
       {settings.editor.showMinimap && (
         <MiniMap
-          nodeColor={(node) => (node.type === "error" ? "#ef4444" : "#3b82f6")}
+          nodeColor={(node) => {
+            if (node.type === "error") return "#ef4444";
+            if (node.type === "clusterRoot") return "#a855f7";
+            if (node.type === "subNode") return "#06b6d4";
+            return "#3b82f6";
+          }}
           maskColor="rgba(0, 0, 0, 0.1)"
         />
       )}

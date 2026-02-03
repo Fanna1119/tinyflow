@@ -77,6 +77,33 @@ export const workflowJsonSchema = {
           label: {
             type: "string",
           },
+          nodeType: {
+            type: "string",
+            enum: ["default", "clusterRoot", "subNode"],
+            description: "Type of node for cluster grouping",
+          },
+          handles: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["id", "type"],
+              additionalProperties: false,
+              properties: {
+                id: { type: "string", minLength: 1 },
+                type: { type: "string", enum: ["source", "target"] },
+                label: { type: "string" },
+                position: {
+                  type: "string",
+                  enum: ["top", "bottom", "left", "right"],
+                },
+              },
+            },
+            description: "Custom handles for cluster root nodes",
+          },
+          parentId: {
+            type: "string",
+            description: "Parent cluster root node ID for sub-nodes",
+          },
         },
       },
     },
@@ -101,6 +128,19 @@ export const workflowJsonSchema = {
           },
           condition: {
             type: "string",
+          },
+          sourceHandle: {
+            type: "string",
+            description: "ID of the source handle for cluster connections",
+          },
+          targetHandle: {
+            type: "string",
+            description: "ID of the target handle",
+          },
+          edgeType: {
+            type: "string",
+            enum: ["default", "subnode"],
+            description: "Type of edge for rendering",
           },
         },
       },

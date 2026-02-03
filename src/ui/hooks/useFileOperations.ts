@@ -59,6 +59,7 @@ export function useFileOperations({
         const result = onImport(json);
         if (!result.success) {
           alert(`Import failed: ${result.error}`);
+          console.error("Import error:", result.error);
         } else {
           if (result.warnings?.length) {
             console.warn("Import warnings:", result.warnings);
