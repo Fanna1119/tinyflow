@@ -17,6 +17,15 @@ A visual workflow editor and runtime built with React Flow and [PocketFlow](http
 - 🚀 **High Performance** - Powered by Bun runtime for fast execution
 - 🧳 **Tiny bundle size** - Minimal dependencies for lightweight deployments
 
+**Recent updates (Feb 2026)**
+
+- Server-side execution & bundling: bundles are built and run only on the server (Vite dev server plugin). Generated bundles are written to `dist/{outputDir}` by the dev-server API instead of being downloaded from the browser.
+- Dev-server environment handling: the Vite dev plugin loads `.env` files server-side (using Vite's `loadEnv`) and exposes masked variables to the UI via a `/api/env-vars` endpoint. Use `OPENAI_` and `VITE_` prefixed variables for LLM and client config.
+- UI: Settings now fetch environment variables from the server and display masked values; the Bundle UI posts build requests to the server (`/api/build-bundle`) and shows the output path/files.
+- Debugger: step-through (step-mode) support and improved event playback for manual stepping.
+- Editor: multi-tab workflow editing removed to simplify sync; import/export and duplicate-edge fixes applied.
+- Examples: updated example flows (for example `examples/agentic-support-ticket.json`) to call LLM functions by default (simulate: false) and to use action-based routing where appropriate.
+
 <!-- image example from public dir  example1.png-->
 
 <div align="center">
@@ -52,7 +61,11 @@ OPENAI_API_KEY=sk-your-api-key-here
 TINYFLOW_DEBUG=true
 ```
 
-Environment variables with `OPENAI_` or `TINYFLOW_` prefixes are automatically passed to workflow execution.
+Notes about environment variables and the dev server
+
+- The development server loads `.env` files server-side using Vite's `loadEnv` so server-only keys (like `OPENAI_API_KEY`) are available to runtime execution on the server.
+- The UI fetches a masked view of selected env keys from `/api/env-vars` for display in Settings. Only masked values are shown in the client.
+- Recommended prefixes: `OPENAI_` for LLM keys, `VITE_` for client-visible config. Server-side runtime will also read `OPENAI_` and `TINYFLOW_` keys.
 
 ### CLI Usage
 
