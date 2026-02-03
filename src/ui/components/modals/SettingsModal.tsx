@@ -17,13 +17,10 @@ import {
   RefreshCw,
   Check,
   AlertCircle,
-  Plus,
-  Trash2,
 } from "lucide-react";
 import {
   type TinyFlowSettings,
   type EnvVariable,
-  type CredentialReference,
   DEFAULT_SETTINGS,
   getEnvironmentVariables,
   loadSettings,
@@ -31,8 +28,7 @@ import {
   hasSettingsAccess,
   requestSettingsAccess,
   initSettingsAccess,
-} from "../utils/settings";
-import { getCredentialStore, type Credential } from "../../credentials";
+} from "../../utils/settings";
 
 // ============================================================================
 // Types
@@ -44,7 +40,7 @@ interface SettingsModalProps {
   onSettingsChange?: (settings: TinyFlowSettings) => void;
 }
 
-type TabType = "environment" | "credentials" | "editor" | "runtime";
+type TabType = "environment" | "editor" | "runtime";
 
 // ============================================================================
 // Tab Components
@@ -161,154 +157,6 @@ function EnvironmentTab() {
                   </div>
                 ))}
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface CredentialsTabProps {
-  credentials: CredentialReference[];
-  onUpdate: (credentials: CredentialReference[]) => void;
-}
-
-function CredentialsTab({ credentials, onUpdate }: CredentialsTabProps) {
-  const [isAdding, setIsAdding] = useState(false);
-  const [newCred, setNewCred] = useState({
-    name: "",
-    type: "api-key",
-    key: "",
-  });
-  const store = getCredentialStore();
-
-  const handleAdd = () => {
-    if (!newCred.name || !newCred.key) return;
-
-    const id = `cred-${Date.now()}`;
-    store.set({
-      id,
-      name: newCred.name,
-      type: newCred.type,
-      data: { key: newCred.key },
-    });
-
-    onUpdate([...credentials, { id, name: newCred.name, type: newCred.type }]);
-
-    setNewCred({ name: "", type: "api-key", key: "" });
-    setIsAdding(false);
-  };
-
-  const handleDelete = (id: string) => {
-    store.delete(id);
-    onUpdate(credentials.filter((c) => c.id !== id));
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Manage API keys and credentials for workflow integrations
-        </p>
-        <button
-          onClick={() => setIsAdding(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add
-        </button>
-      </div>
-
-      {isAdding && (
-        <div className="p-4 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 rounded-lg space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Name
-            </label>
-            <input
-              type="text"
-              value={newCred.name}
-              onChange={(e) => setNewCred({ ...newCred, name: e.target.value })}
-              placeholder="e.g., OpenAI Production"
-              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Type
-            </label>
-            <select
-              value={newCred.type}
-              onChange={(e) => setNewCred({ ...newCred, type: e.target.value })}
-              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="api-key">API Key</option>
-              <option value="oauth2">OAuth2</option>
-              <option value="basic-auth">Basic Auth</option>
-              <option value="bearer">Bearer Token</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Secret Key
-            </label>
-            <input
-              type="password"
-              value={newCred.key}
-              onChange={(e) => setNewCred({ ...newCred, key: e.target.value })}
-              placeholder="sk-..."
-              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setIsAdding(false)}
-              className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleAdd}
-              disabled={!newCred.name || !newCred.key}
-              className="px-3 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-lg"
-            >
-              Save Credential
-            </button>
-          </div>
-        </div>
-      )}
-
-      {credentials.length === 0 && !isAdding ? (
-        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-          <Key className="w-12 h-12 mx-auto mb-3 opacity-50" />
-          <p>No credentials configured</p>
-          <p className="text-xs mt-1">
-            Add API keys and tokens for your integrations
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {credentials.map((cred) => (
-            <div
-              key={cred.id}
-              className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg"
-            >
-              <div>
-                <div className="font-medium text-gray-900 dark:text-gray-100">
-                  {cred.name}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {cred.type} • {cred.id}
-                </div>
-              </div>
-              <button
-                onClick={() => handleDelete(cred.id)}
-                className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
-                title="Delete credential"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
             </div>
           ))}
         </div>
@@ -601,11 +449,6 @@ export function SettingsModal({
       label: "Environment",
       icon: <Key className="w-4 h-4" />,
     },
-    {
-      id: "credentials",
-      label: "Credentials",
-      icon: <Key className="w-4 h-4" />,
-    },
     { id: "editor", label: "Editor", icon: <Monitor className="w-4 h-4" /> },
     { id: "runtime", label: "Runtime", icon: <Play className="w-4 h-4" /> },
   ];
@@ -708,12 +551,6 @@ export function SettingsModal({
           ) : (
             <>
               {activeTab === "environment" && <EnvironmentTab />}
-              {activeTab === "credentials" && (
-                <CredentialsTab
-                  credentials={settings.credentials}
-                  onUpdate={(credentials) => updateSettings({ credentials })}
-                />
-              )}
               {activeTab === "editor" && (
                 <EditorTab
                   settings={settings.editor}

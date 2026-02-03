@@ -12,8 +12,8 @@ import {
   Box,
 } from "lucide-react";
 import * as LucideIcons from "lucide-react";
-import { registry } from "../../registry";
-import type { FunctionMetadata } from "../../schema/types";
+import { registry } from "../../../registry";
+import type { FunctionMetadata } from "../../../schema/types";
 
 // Dynamic icon component - renders the appropriate Lucide icon by name
 const DynamicIcon = memo(function DynamicIcon({

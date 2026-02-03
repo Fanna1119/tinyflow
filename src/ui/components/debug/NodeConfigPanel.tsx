@@ -5,9 +5,9 @@
 
 import { useState } from "react";
 import { X, AlertTriangle, Settings, Code, FlaskConical } from "lucide-react";
-import { registry } from "../../registry";
-import type { FunctionParameter } from "../../schema/types";
-import type { MockValue } from "../../compiler";
+import { registry } from "../../../registry";
+import type { FunctionParameter } from "../../../schema/types";
+import type { MockValue } from "../../../compiler";
 
 interface NodeConfigPanelProps {
   nodeId: string;

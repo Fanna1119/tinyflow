@@ -5,7 +5,7 @@
 
 import { useState, useCallback } from "react";
 import { Plus, X, FileJson, Upload, MoreHorizontal } from "lucide-react";
-import type { WorkflowDefinition } from "../../schema/types";
+import type { WorkflowDefinition } from "../../../schema/types";
 
 // ============================================================================
 // Types
@@ -173,7 +173,7 @@ export function WorkflowTabs({
       </div>
 
       {/* New tab / Import buttons */}
-      <div className="flex items-center gap-1 px-2 flex-shrink-0">
+      <div className="flex items-center gap-1 px-2 shrink-0">
         <button
           onClick={onNewTab}
           className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"

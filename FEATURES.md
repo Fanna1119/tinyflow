@@ -62,80 +62,6 @@ curl -X POST http://localhost:3000/run \
 
 ---
 
-## Credentials & Secrets Management
-
-Securely store and manage credentials for workflow integrations.
-
-### Store Credentials
-
-```typescript
-import { getCredentialStore } from "tinyflow/credentials";
-
-const credStore = getCredentialStore({
-  encryptionKey: process.env.TINYFLOW_ENCRYPTION_KEY,
-});
-
-// Store API credential
-credStore.set({
-  id: "openai-api",
-  name: "OpenAI API Key",
-  type: "api-key",
-  data: {
-    apiKey: "sk-...",
-    organization: "org-...",
-  },
-});
-
-// Store OAuth credential
-credStore.set({
-  id: "github-oauth",
-  name: "GitHub OAuth",
-  type: "oauth2",
-  data: {
-    accessToken: "gho_...",
-    refreshToken: "ghr_...",
-    expiresAt: Date.now() + 3600000,
-  },
-});
-```
-
-### Use Credentials in Workflows
-
-```typescript
-import { Runtime } from "tinyflow/runtime";
-import { getCredentialStore } from "tinyflow/credentials";
-
-const credStore = getCredentialStore();
-
-// Register custom function that uses credentials
-registerFunction(
-  {
-    id: "api.call-with-creds",
-    // ...
-  },
-  async (params, ctx) => {
-    const apiKey = credStore.getValue("openai-api", "apiKey");
-
-    const response = await fetch("https://api.openai.com/v1/...", {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-    });
-
-    // ...
-  },
-);
-```
-
-### List Credentials (without secrets)
-
-```typescript
-const credentials = credStore.list();
-// Returns: [{ id: 'openai-api', name: 'OpenAI API Key', type: 'api-key' }, ...]
-```
-
----
-
 ## Webhook Triggers
 
 Receive HTTP webhooks and start workflows with incoming data.
@@ -487,26 +413,18 @@ const duration = log.getNodeDuration("my-node");
 ```typescript
 import { buildBundle } from "tinyflow/bundle";
 import { Runtime } from "tinyflow/runtime";
-import { getCredentialStore } from "tinyflow/credentials";
 import { withRetry, RETRY_POLICIES } from "tinyflow/runtime";
 import { testWorkflow } from "tinyflow/testing";
 
-// 1. Setup credentials
-const credStore = getCredentialStore();
-credStore.set({
-  id: "api-key",
-  name: "API Key",
-  type: "api-key",
-  data: { key: process.env.API_KEY },
-});
-
-// 2. Define workflow with webhook trigger
+// 1. Define workflow with webhook trigger
 const workflow = {
   flow: {
     id: "production-workflow",
     name: "Production Workflow",
     startNodeId: "webhook",
-    envs: {},
+    envs: {
+      API_KEY: "${API_KEY}", // Use environment variables for secrets
+    },
   },
   nodes: [
     {
@@ -522,7 +440,7 @@ const workflow = {
   ],
 };
 
-// 3. Test workflow
+// 2. Test workflow
 const testResult = await testWorkflow(workflow, {
   initialData: { __webhook_payload: { test: "data" } },
   expectedSuccess: true,
@@ -533,7 +451,7 @@ if (!testResult.passed) {
   throw new Error(`Tests failed: ${testResult.failures.join(", ")}`);
 }
 
-// 4. Build production bundle
+// 3. Build production bundle
 const bundle = await buildBundle({
   workflow,
   format: "esm",
@@ -544,12 +462,12 @@ const bundle = await buildBundle({
   minify: true,
 });
 
-// 5. Write files
+// 4. Write files
 for (const [filename, content] of Object.entries(bundle.files || {})) {
   await Bun.write(filename, content);
 }
 
-// 6. Deploy with Docker
+// 5. Deploy with Docker
 // docker-compose up -d
 
 console.log("✓ Production bundle generated and ready to deploy!");

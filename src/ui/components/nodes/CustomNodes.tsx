@@ -5,9 +5,9 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { AlertTriangle, Box, FlaskConical } from "lucide-react";
-import { registry } from "../../registry";
+import { registry } from "../../../registry";
 import * as LucideIcons from "lucide-react";
-import type { ExecutionStatus } from "../hooks/useDebugger";
+import type { ExecutionStatus } from "../../hooks/useDebugger";
 
 // ============================================================================
 // Function Node
