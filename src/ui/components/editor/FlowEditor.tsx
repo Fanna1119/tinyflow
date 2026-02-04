@@ -254,6 +254,9 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
           onRemoveHandle={(handleId) =>
             actions.removeClusterHandle(selectedNode.id, handleId)
           }
+          onRenameHandle={(handleId, newLabel) =>
+            actions.renameClusterHandle(selectedNode.id, handleId, newLabel)
+          }
         />
       )}
 

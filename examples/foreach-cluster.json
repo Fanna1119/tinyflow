@@ -1,0 +1,283 @@
+{
+  "$schema": "./workflow.schema.json",
+  "id": "foreach-cluster-example",
+  "name": "ForEach with Cluster Processing",
+  "description": "Iterates over a list of user IDs using forEach, and for each user processes multiple data sources in parallel using a cluster (profile, posts, friends).",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "message": "Starting user data enrichment pipeline"
+      },
+      "position": { "x": 0, "y": 200 },
+      "label": "Start Pipeline"
+    },
+    {
+      "id": "foreach-user",
+      "functionId": "control.forEach",
+      "params": {
+        "array": [101, 102, 103, 104, 105],
+        "itemKey": "currentUserId",
+        "indexKey": "currentUserIndex"
+      },
+      "position": { "x": 400, "y": 200 },
+      "label": "For Each User"
+    },
+    {
+      "id": "log-current-user",
+      "functionId": "core.log",
+      "params": {
+        "message": "Processing user {{currentUserId}} (index: {{currentUserIndex}})"
+      },
+      "position": { "x": 600, "y": 100 },
+      "label": "Log Current User"
+    },
+    {
+      "id": "user-data-cluster",
+      "functionId": "core.log",
+      "params": {
+        "message": "Fetching data for user {{currentUserId}} in parallel"
+      },
+      "position": { "x": 800, "y": 0 },
+      "label": "User Data Cluster",
+      "nodeType": "clusterRoot",
+      "handles": [
+        { "id": "profile", "type": "source", "label": "Profile" },
+        { "id": "posts", "type": "source", "label": "Posts" },
+        { "id": "friends", "type": "source", "label": "Friends" }
+      ]
+    },
+    {
+      "id": "fetch-profile",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/users/{{currentUserId}}",
+        "headers": { "Accept": "application/json" }
+      },
+      "position": { "x": 650, "y": 200 },
+      "label": "Fetch Profile",
+      "nodeType": "subNode",
+      "parentId": "user-data-cluster"
+    },
+    {
+      "id": "parse-profile",
+      "functionId": "transform.jsonParse",
+      "params": {
+        "input": "{{fetch-profile.output}}"
+      },
+      "position": { "x": 650, "y": 350 },
+      "label": "Parse Profile",
+      "nodeType": "subNode",
+      "parentId": "user-data-cluster"
+    },
+    {
+      "id": "fetch-posts",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/users/{{currentUserId}}/posts",
+        "headers": { "Accept": "application/json" }
+      },
+      "position": { "x": 850, "y": 200 },
+      "label": "Fetch Posts",
+      "nodeType": "subNode",
+      "parentId": "user-data-cluster"
+    },
+    {
+      "id": "parse-posts",
+      "functionId": "transform.jsonParse",
+      "params": {
+        "input": "{{fetch-posts.output}}"
+      },
+      "position": { "x": 850, "y": 350 },
+      "label": "Parse Posts",
+      "nodeType": "subNode",
+      "parentId": "user-data-cluster"
+    },
+    {
+      "id": "count-posts",
+      "functionId": "transform.template",
+      "params": {
+        "template": "User has {{parse-posts.output.length}} posts"
+      },
+      "position": { "x": 850, "y": 500 },
+      "label": "Count Posts",
+      "nodeType": "subNode",
+      "parentId": "user-data-cluster"
+    },
+    {
+      "id": "fetch-friends",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/users",
+        "headers": { "Accept": "application/json" }
+      },
+      "position": { "x": 1050, "y": 200 },
+      "label": "Fetch All Users (Friends)",
+      "nodeType": "subNode",
+      "parentId": "user-data-cluster"
+    },
+    {
+      "id": "parse-friends",
+      "functionId": "transform.jsonParse",
+      "params": {
+        "input": "{{fetch-friends.output}}"
+      },
+      "position": { "x": 1050, "y": 350 },
+      "label": "Parse Friends",
+      "nodeType": "subNode",
+      "parentId": "user-data-cluster"
+    },
+    {
+      "id": "merge-user-data",
+      "functionId": "transform.merge",
+      "params": {
+        "sources": [
+          { "profile": "{{parse-profile.output}}" },
+          { "posts": "{{parse-posts.output}}" },
+          { "postSummary": "{{count-posts.output}}" },
+          { "potentialFriends": "{{parse-friends.output}}" }
+        ],
+        "outputKey": "enrichedUser"
+      },
+      "position": { "x": 1200, "y": 100 },
+      "label": "Merge User Data"
+    },
+    {
+      "id": "store-enriched-user",
+      "functionId": "memory.set",
+      "params": {
+        "key": "enrichedUser_{{currentUserId}}",
+        "value": "{{merge-user-data.output}}"
+      },
+      "position": { "x": 1400, "y": 100 },
+      "label": "Store Enriched User"
+    },
+    {
+      "id": "advance-foreach",
+      "functionId": "control.forEachAdvance",
+      "params": {
+        "result": "{{merge-user-data.output}}"
+      },
+      "position": { "x": 1600, "y": 100 },
+      "label": "Advance Iterator"
+    },
+    {
+      "id": "loop-complete",
+      "functionId": "core.log",
+      "params": {
+        "message": "All users processed! Results: {{foreach-user.results}}"
+      },
+      "position": { "x": 600, "y": 400 },
+      "label": "Loop Complete"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "message": "User enrichment pipeline completed"
+      },
+      "position": { "x": 800, "y": 400 },
+      "label": "End Pipeline"
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "foreach-user",
+      "action": "default"
+    },
+    {
+      "from": "foreach-user",
+      "to": "log-current-user",
+      "action": "next"
+    },
+    {
+      "from": "foreach-user",
+      "to": "loop-complete",
+      "action": "complete"
+    },
+    {
+      "from": "log-current-user",
+      "to": "user-data-cluster",
+      "action": "default"
+    },
+    {
+      "from": "user-data-cluster",
+      "to": "fetch-profile",
+      "action": "default",
+      "sourceHandle": "profile",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "user-data-cluster",
+      "to": "fetch-posts",
+      "action": "default",
+      "sourceHandle": "posts",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "user-data-cluster",
+      "to": "fetch-friends",
+      "action": "default",
+      "sourceHandle": "friends",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-profile",
+      "to": "parse-profile",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-posts",
+      "to": "parse-posts",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "parse-posts",
+      "to": "count-posts",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-friends",
+      "to": "parse-friends",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "user-data-cluster",
+      "to": "merge-user-data",
+      "action": "default"
+    },
+    {
+      "from": "merge-user-data",
+      "to": "store-enriched-user",
+      "action": "default"
+    },
+    {
+      "from": "store-enriched-user",
+      "to": "advance-foreach",
+      "action": "default"
+    },
+    {
+      "from": "advance-foreach",
+      "to": "foreach-user",
+      "action": "default"
+    },
+    {
+      "from": "loop-complete",
+      "to": "end",
+      "action": "default"
+    }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "updatedAt": "2026-02-04T16:00:00.000Z"
+  }
+}

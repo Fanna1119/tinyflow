@@ -1,0 +1,117 @@
+{
+  "$schema": "./workflow.schema.json",
+  "id": "foreach-simple-example",
+  "name": "Simple ForEach Example",
+  "description": "Basic forEach loop: iterate over numbers, log each one, advance to next iteration.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "message": "Starting simple forEach example"
+      },
+      "position": { "x": 0, "y": 100 },
+      "label": "Start"
+    },
+    {
+      "id": "foreach-loop",
+      "functionId": "control.forEach",
+      "params": {
+        "array": [10, 20, 30, 40, 50],
+        "itemKey": "currentNumber",
+        "indexKey": "currentIndex"
+      },
+      "position": { "x": 200, "y": 100 },
+      "label": "forEach Loop"
+    },
+    {
+      "id": "process-number",
+      "functionId": "core.log",
+      "params": {
+        "message": "Processing item #{{currentIndex}}: {{currentNumber}}"
+      },
+      "position": { "x": 600, "y": 100 },
+      "label": "Process Item"
+    },
+    {
+      "id": "double-number",
+      "functionId": "transform.template",
+      "params": {
+        "template": "{{currentNumber}} × 2 = {{currentNumber * 2}}"
+      },
+      "position": { "x": 800, "y": 100 },
+      "label": "Double Number"
+    },
+    {
+      "id": "advance-iterator",
+      "functionId": "control.forEachAdvance",
+      "params": {
+        "result": "{{double-number.output}}"
+      },
+      "position": { "x": 1000, "y": 100 },
+      "label": "Advance Iterator"
+    },
+    {
+      "id": "loop-complete",
+      "functionId": "core.log",
+      "params": {
+        "message": "Loop complete! Processed {{foreach-loop.results}} results"
+      },
+      "position": { "x": 600, "y": 300 },
+      "label": "All Done"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "message": "forEach example finished"
+      },
+      "position": { "x": 800, "y": 300 },
+      "label": "End"
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "foreach-loop",
+      "action": "default"
+    },
+    {
+      "from": "foreach-loop",
+      "to": "process-number",
+      "action": "next"
+    },
+    {
+      "from": "foreach-loop",
+      "to": "loop-complete",
+      "action": "complete"
+    },
+    {
+      "from": "process-number",
+      "to": "double-number",
+      "action": "default"
+    },
+    {
+      "from": "double-number",
+      "to": "advance-iterator",
+      "action": "default"
+    },
+    {
+      "from": "advance-iterator",
+      "to": "foreach-loop",
+      "action": "default"
+    },
+    {
+      "from": "loop-complete",
+      "to": "end",
+      "action": "default"
+    }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "updatedAt": "2026-02-04T16:05:00.000Z"
+  }
+}

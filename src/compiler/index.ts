@@ -4,3 +4,4 @@
  */
 
 export * from "./compiler";
+export * from "./clusterNode";

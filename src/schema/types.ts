@@ -67,7 +67,14 @@ export interface WorkflowNode {
 // Edge Types
 // ============================================================================
 
-export type EdgeAction = "default" | "success" | "error" | "condition";
+export type EdgeAction =
+  | "default"
+  | "success"
+  | "error"
+  | "condition"
+  | "next"
+  | "complete"
+  | string;
 
 /**
  * Edge type for visual differentiation

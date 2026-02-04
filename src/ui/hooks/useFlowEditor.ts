@@ -98,6 +98,12 @@ export interface FlowEditorActions {
   addClusterHandle: (nodeId: string, label?: string) => void;
   /** Remove a handle from a cluster root node */
   removeClusterHandle: (nodeId: string, handleId: string) => void;
+  /** Rename a handle on a cluster root node */
+  renameClusterHandle: (
+    nodeId: string,
+    handleId: string,
+    newLabel: string,
+  ) => void;
   /** Get node type info */
   getNodeType: (nodeId: string) => NodeType | undefined;
   /** Get handles for a node */
@@ -229,22 +235,14 @@ function reactFlowNodeToWorkflowNode(node: Node): WorkflowNode {
 }
 
 function reactFlowEdgeToWorkflowEdge(edge: Edge): WorkflowEdge {
-  const validActions: EdgeAction[] = [
-    "default",
-    "success",
-    "error",
-    "condition",
-  ];
-
-  // Get action from label or edge data
+  // Get action from label or edge data - allow any string action
   let action: EdgeAction = "default";
-  if (edge.label && validActions.includes(edge.label as EdgeAction)) {
+  if (edge.label && typeof edge.label === "string") {
     action = edge.label as EdgeAction;
-  } else if (
-    edge.data?.label &&
-    validActions.includes(edge.data.label as EdgeAction)
-  ) {
+  } else if (edge.data?.label && typeof edge.data.label === "string") {
     action = edge.data.label as EdgeAction;
+  } else if (edge.data?.action && typeof edge.data.action === "string") {
+    action = edge.data.action as EdgeAction;
   }
 
   const workflowEdge: WorkflowEdge = {
@@ -899,6 +897,29 @@ export function useFlowEditor(
     [],
   );
 
+  const renameClusterHandle = useCallback(
+    (nodeId: string, handleId: string, newLabel: string) => {
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id !== nodeId) return n;
+
+          const currentHandles = (n.data.handles as NodeHandle[]) ?? [];
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              handles: currentHandles.map((h) =>
+                h.id === handleId ? { ...h, label: newLabel } : h,
+              ),
+            },
+          };
+        }),
+      );
+      setIsDirty(true);
+    },
+    [],
+  );
+
   const getNodeType = useCallback(
     (nodeId: string): NodeType | undefined => {
       const node = nodes.find((n) => n.id === nodeId);
@@ -942,6 +963,7 @@ export function useFlowEditor(
     convertToRegularNode,
     addClusterHandle,
     removeClusterHandle,
+    renameClusterHandle,
     getNodeType,
     getNodeHandles,
   };

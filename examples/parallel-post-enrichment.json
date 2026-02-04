@@ -1,0 +1,798 @@
+{
+  "$schema": "./workflow.schema.json",
+  "id": "parallel-post-enrichment",
+  "name": "Parallel Post Enrichment",
+  "description": "Cluster-based parallel processing of multiple post IDs. Each worker processes one post: fetches post data, gets comments, merges them, and stores enriched data.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "message": "Starting parallel post enrichment for multiple post IDs"
+      },
+      "position": {
+        "x": 0,
+        "y": 100
+      },
+      "label": "Start Enrichment"
+    },
+    {
+      "id": "post-processor-cluster",
+      "functionId": "core.log",
+      "params": {
+        "message": "Post Enrichment Cluster: Processing multiple posts in parallel"
+      },
+      "position": {
+        "x": 250,
+        "y": 0
+      },
+      "label": "Post Processor Cluster",
+      "nodeType": "clusterRoot",
+      "handles": [
+        {
+          "id": "post-1",
+          "type": "source",
+          "label": "Post 1"
+        },
+        {
+          "id": "post-2",
+          "type": "source",
+          "label": "Post 2"
+        },
+        {
+          "id": "post-3",
+          "type": "source",
+          "label": "Post 3"
+        },
+        {
+          "id": "post-4",
+          "type": "source",
+          "label": "Post 4"
+        },
+        {
+          "id": "post-5",
+          "type": "source",
+          "label": "Post 5"
+        }
+      ]
+    },
+    {
+      "id": "process-post-1",
+      "functionId": "core.log",
+      "params": {
+        "message": "Processing Post ID: 1"
+      },
+      "position": {
+        "x": -200,
+        "y": 300
+      },
+      "label": "Process Post 1",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "fetch-post-1",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/1",
+        "headers": {
+          "Accept": "application/json"
+        }
+      },
+      "position": {
+        "x": -200,
+        "y": 450
+      },
+      "label": "Fetch Post 1",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "fetch-comments-1",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/1/comments",
+        "headers": {
+          "Accept": "application/json"
+        }
+      },
+      "position": {
+        "x": -50,
+        "y": 450
+      },
+      "label": "Fetch Comments 1",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "parse-comments-1",
+      "functionId": "transform.jsonParse",
+      "params": {
+        "input": "{{fetch-comments-1.output}}"
+      },
+      "position": {
+        "x": 100,
+        "y": 450
+      },
+      "label": "Parse Comments 1",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "merge-post-1",
+      "functionId": "transform.merge",
+      "params": {
+        "sources": [
+          "{{fetch-post-1.output}}",
+          { "comments": "{{parse-comments-1.output}}" }
+        ],
+        "outputKey": "enriched_post_1"
+      },
+      "position": {
+        "x": 250,
+        "y": 450
+      },
+      "label": "Merge Post + Comments 1",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "store-post-1",
+      "functionId": "memory.set",
+      "params": {
+        "key": "enriched_post_1",
+        "value": "{{merge-post-1.output}}"
+      },
+      "position": {
+        "x": 400,
+        "y": 450
+      },
+      "label": "Store Post 1",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "process-post-2",
+      "functionId": "core.log",
+      "params": {
+        "message": "Processing Post ID: 2"
+      },
+      "position": {
+        "x": 50,
+        "y": 300
+      },
+      "label": "Process Post 2",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "fetch-post-2",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/2",
+        "headers": {
+          "Accept": "application/json"
+        }
+      },
+      "position": {
+        "x": 50,
+        "y": 450
+      },
+      "label": "Fetch Post 2",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "fetch-comments-2",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/2/comments",
+        "headers": {
+          "Accept": "application/json"
+        }
+      },
+      "position": {
+        "x": 200,
+        "y": 450
+      },
+      "label": "Fetch Comments 2",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "parse-comments-2",
+      "functionId": "transform.jsonParse",
+      "params": {
+        "input": "{{fetch-comments-2.output}}"
+      },
+      "position": {
+        "x": 350,
+        "y": 450
+      },
+      "label": "Parse Comments 2",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "merge-post-2",
+      "functionId": "transform.merge",
+      "params": {
+        "sources": [
+          "{{fetch-post-2.output}}",
+          { "comments": "{{parse-comments-2.output}}" }
+        ],
+        "outputKey": "enriched_post_2"
+      },
+      "position": {
+        "x": 500,
+        "y": 450
+      },
+      "label": "Merge Post + Comments 2",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "store-post-2",
+      "functionId": "memory.set",
+      "params": {
+        "key": "enriched_post_2",
+        "value": "{{merge-post-2.output}}"
+      },
+      "position": {
+        "x": 650,
+        "y": 450
+      },
+      "label": "Store Post 2",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "process-post-3",
+      "functionId": "core.log",
+      "params": {
+        "message": "Processing Post ID: 3"
+      },
+      "position": {
+        "x": 300,
+        "y": 300
+      },
+      "label": "Process Post 3",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "fetch-post-3",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/3",
+        "headers": {
+          "Accept": "application/json"
+        }
+      },
+      "position": {
+        "x": 300,
+        "y": 450
+      },
+      "label": "Fetch Post 3",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "fetch-comments-3",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/3/comments",
+        "headers": {
+          "Accept": "application/json"
+        }
+      },
+      "position": {
+        "x": 450,
+        "y": 450
+      },
+      "label": "Fetch Comments 3",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "parse-comments-3",
+      "functionId": "transform.jsonParse",
+      "params": {
+        "input": "{{fetch-comments-3.output}}"
+      },
+      "position": {
+        "x": 600,
+        "y": 450
+      },
+      "label": "Parse Comments 3",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "merge-post-3",
+      "functionId": "transform.merge",
+      "params": {
+        "sources": [
+          "{{fetch-post-3.output}}",
+          { "comments": "{{parse-comments-3.output}}" }
+        ],
+        "outputKey": "enriched_post_3"
+      },
+      "position": {
+        "x": 750,
+        "y": 450
+      },
+      "label": "Merge Post + Comments 3",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "store-post-3",
+      "functionId": "memory.set",
+      "params": {
+        "key": "enriched_post_3",
+        "value": "{{merge-post-3.output}}"
+      },
+      "position": {
+        "x": 900,
+        "y": 450
+      },
+      "label": "Store Post 3",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "process-post-4",
+      "functionId": "core.log",
+      "params": {
+        "message": "Processing Post ID: 4"
+      },
+      "position": {
+        "x": 550,
+        "y": 300
+      },
+      "label": "Process Post 4",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "fetch-post-4",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/4",
+        "headers": {
+          "Accept": "application/json"
+        }
+      },
+      "position": {
+        "x": 550,
+        "y": 450
+      },
+      "label": "Fetch Post 4",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "fetch-comments-4",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/4/comments",
+        "headers": {
+          "Accept": "application/json"
+        }
+      },
+      "position": {
+        "x": 700,
+        "y": 450
+      },
+      "label": "Fetch Comments 4",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "parse-comments-4",
+      "functionId": "transform.jsonParse",
+      "params": {
+        "input": "{{fetch-comments-4.output}}"
+      },
+      "position": {
+        "x": 850,
+        "y": 450
+      },
+      "label": "Parse Comments 4",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "merge-post-4",
+      "functionId": "transform.merge",
+      "params": {
+        "sources": [
+          "{{fetch-post-4.output}}",
+          { "comments": "{{parse-comments-4.output}}" }
+        ],
+        "outputKey": "enriched_post_4"
+      },
+      "position": {
+        "x": 1000,
+        "y": 450
+      },
+      "label": "Merge Post + Comments 4",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "store-post-4",
+      "functionId": "memory.set",
+      "params": {
+        "key": "enriched_post_4",
+        "value": "{{merge-post-4.output}}"
+      },
+      "position": {
+        "x": 1150,
+        "y": 450
+      },
+      "label": "Store Post 4",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "process-post-5",
+      "functionId": "core.log",
+      "params": {
+        "message": "Processing Post ID: 5"
+      },
+      "position": {
+        "x": 800,
+        "y": 300
+      },
+      "label": "Process Post 5",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "fetch-post-5",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/5",
+        "headers": {
+          "Accept": "application/json"
+        }
+      },
+      "position": {
+        "x": 800,
+        "y": 450
+      },
+      "label": "Fetch Post 5",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "fetch-comments-5",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/5/comments",
+        "headers": {
+          "Accept": "application/json"
+        }
+      },
+      "position": {
+        "x": 950,
+        "y": 450
+      },
+      "label": "Fetch Comments 5",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "parse-comments-5",
+      "functionId": "transform.jsonParse",
+      "params": {
+        "input": "{{fetch-comments-5.output}}"
+      },
+      "position": {
+        "x": 1100,
+        "y": 450
+      },
+      "label": "Parse Comments 5",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "merge-post-5",
+      "functionId": "transform.merge",
+      "params": {
+        "sources": [
+          "{{fetch-post-5.output}}",
+          { "comments": "{{parse-comments-5.output}}" }
+        ],
+        "outputKey": "enriched_post_5"
+      },
+      "position": {
+        "x": 1250,
+        "y": 450
+      },
+      "label": "Merge Post + Comments 5",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "store-post-5",
+      "functionId": "memory.set",
+      "params": {
+        "key": "enriched_post_5",
+        "value": "{{merge-post-5.output}}"
+      },
+      "position": {
+        "x": 1400,
+        "y": 450
+      },
+      "label": "Store Post 5",
+      "nodeType": "subNode",
+      "parentId": "post-processor-cluster"
+    },
+    {
+      "id": "all-posts-processed",
+      "functionId": "core.log",
+      "params": {
+        "message": "All posts have been enriched and stored in memory"
+      },
+      "position": {
+        "x": 1600,
+        "y": 100
+      },
+      "label": "All Posts Processed"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "message": "Parallel post enrichment completed"
+      },
+      "position": {
+        "x": 1800,
+        "y": 100
+      },
+      "label": "Pipeline Complete"
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "post-processor-cluster",
+      "action": "default"
+    },
+    {
+      "from": "post-processor-cluster",
+      "to": "process-post-1",
+      "action": "default",
+      "sourceHandle": "post-1",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "post-processor-cluster",
+      "to": "process-post-2",
+      "action": "default",
+      "sourceHandle": "post-2",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "post-processor-cluster",
+      "to": "process-post-3",
+      "action": "default",
+      "sourceHandle": "post-3",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "post-processor-cluster",
+      "to": "process-post-4",
+      "action": "default",
+      "sourceHandle": "post-4",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "post-processor-cluster",
+      "to": "process-post-5",
+      "action": "default",
+      "sourceHandle": "post-5",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "process-post-1",
+      "to": "fetch-post-1",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "process-post-1",
+      "to": "fetch-comments-1",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-comments-1",
+      "to": "parse-comments-1",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-post-1",
+      "to": "merge-post-1",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "parse-comments-1",
+      "to": "merge-post-1",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "merge-post-1",
+      "to": "store-post-1",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "process-post-2",
+      "to": "fetch-post-2",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "process-post-2",
+      "to": "fetch-comments-2",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-comments-2",
+      "to": "parse-comments-2",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-post-2",
+      "to": "merge-post-2",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "parse-comments-2",
+      "to": "merge-post-2",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "merge-post-2",
+      "to": "store-post-2",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "process-post-3",
+      "to": "fetch-post-3",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "process-post-3",
+      "to": "fetch-comments-3",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-comments-3",
+      "to": "parse-comments-3",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-post-3",
+      "to": "merge-post-3",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "parse-comments-3",
+      "to": "merge-post-3",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "merge-post-3",
+      "to": "store-post-3",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "process-post-4",
+      "to": "fetch-post-4",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "process-post-4",
+      "to": "fetch-comments-4",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-comments-4",
+      "to": "parse-comments-4",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-post-4",
+      "to": "merge-post-4",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "parse-comments-4",
+      "to": "merge-post-4",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "merge-post-4",
+      "to": "store-post-4",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "process-post-5",
+      "to": "fetch-post-5",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "process-post-5",
+      "to": "fetch-comments-5",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-comments-5",
+      "to": "parse-comments-5",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-post-5",
+      "to": "merge-post-5",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "parse-comments-5",
+      "to": "merge-post-5",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "merge-post-5",
+      "to": "store-post-5",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "post-processor-cluster",
+      "to": "all-posts-processed",
+      "action": "default"
+    },
+    {
+      "from": "all-posts-processed",
+      "to": "end",
+      "action": "default"
+    }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "updatedAt": "2026-02-04T15:30:00.000Z"
+  }
+}

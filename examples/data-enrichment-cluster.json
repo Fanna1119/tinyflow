@@ -1,0 +1,333 @@
+{
+  "$schema": "./workflow.schema.json",
+  "id": "data-enrichment-cluster",
+  "name": "Data Enrichment Cluster",
+  "description": "Cluster-based data enrichment pipeline that processes orders by fetching related post and user data, then triggers fraud detection",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "message": "Starting data enrichment pipeline"
+      },
+      "position": {
+        "x": -20,
+        "y": 120
+      },
+      "label": "Start Pipeline"
+    },
+    {
+      "id": "enrichment-cluster",
+      "functionId": "core.log",
+      "params": {
+        "message": "Data Enrichment Cluster: Processing order enrichment jobs"
+      },
+      "position": {
+        "x": 200,
+        "y": 0
+      },
+      "label": "Enrichment Cluster",
+      "nodeType": "clusterRoot",
+      "handles": [
+        {
+          "id": "find-jobs",
+          "type": "source",
+          "label": "Find Jobs"
+        },
+        {
+          "id": "fetch-post",
+          "type": "source",
+          "label": "Fetch Post"
+        },
+        {
+          "id": "parse-post",
+          "type": "source",
+          "label": "Parse Post"
+        },
+        {
+          "id": "fetch-user",
+          "type": "source",
+          "label": "Fetch User"
+        },
+        {
+          "id": "parse-user",
+          "type": "source",
+          "label": "Parse User"
+        },
+        {
+          "id": "merge-data",
+          "type": "source",
+          "label": "Merge Data"
+        },
+        {
+          "id": "update-order",
+          "type": "source",
+          "label": "Update Order"
+        },
+        {
+          "id": "complete-job",
+          "type": "source",
+          "label": "Complete Job"
+        },
+        {
+          "id": "create-fraud-job",
+          "type": "source",
+          "label": "Create Fraud Job"
+        }
+      ]
+    },
+    {
+      "id": "find-jobs",
+      "functionId": "database.findMany",
+      "params": {
+        "table": "jobs",
+        "where": {
+          "type": "enrich",
+          "status": "pending"
+        },
+        "limit": 10
+      },
+      "position": {
+        "x": -100,
+        "y": 300
+      },
+      "label": "Find Enrichment Jobs",
+      "nodeType": "subNode",
+      "parentId": "enrichment-cluster"
+    },
+    {
+      "id": "fetch-post",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/{{order_id}}",
+        "headers": {
+          "Accept": "application/json"
+        }
+      },
+      "position": {
+        "x": 100,
+        "y": 400
+      },
+      "label": "Fetch Post Data",
+      "nodeType": "subNode",
+      "parentId": "enrichment-cluster"
+    },
+    {
+      "id": "parse-post",
+      "functionId": "transform.jsonParse",
+      "params": {
+        "input": "{{fetch-post.output}}"
+      },
+      "position": {
+        "x": 300,
+        "y": 400
+      },
+      "label": "Parse Post JSON",
+      "nodeType": "subNode",
+      "parentId": "enrichment-cluster"
+    },
+    {
+      "id": "fetch-user",
+      "functionId": "http.get",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/users/{{post.userId}}",
+        "headers": {
+          "Accept": "application/json"
+        }
+      },
+      "position": {
+        "x": 500,
+        "y": 400
+      },
+      "label": "Fetch User Data",
+      "nodeType": "subNode",
+      "parentId": "enrichment-cluster"
+    },
+    {
+      "id": "parse-user",
+      "functionId": "transform.jsonParse",
+      "params": {
+        "input": "{{fetch-user.output}}"
+      },
+      "position": {
+        "x": 700,
+        "y": 400
+      },
+      "label": "Parse User JSON",
+      "nodeType": "subNode",
+      "parentId": "enrichment-cluster"
+    },
+    {
+      "id": "merge-data",
+      "functionId": "transform.merge",
+      "params": {
+        "sources": [
+          "{{parse-post.output}}",
+          "{{parse-user.output}}"
+        ],
+        "outputKey": "enriched_data"
+      },
+      "position": {
+        "x": 900,
+        "y": 400
+      },
+      "label": "Merge Post + User",
+      "nodeType": "subNode",
+      "parentId": "enrichment-cluster"
+    },
+    {
+      "id": "update-order",
+      "functionId": "database.update",
+      "params": {
+        "table": "orders",
+        "where": {
+          "id": "{{order_id}}"
+        },
+        "data": {
+          "enriched_data": "{{merge-data.output}}"
+        }
+      },
+      "position": {
+        "x": 1100,
+        "y": 300
+      },
+      "label": "Update Order",
+      "nodeType": "subNode",
+      "parentId": "enrichment-cluster"
+    },
+    {
+      "id": "complete-job",
+      "functionId": "database.update",
+      "params": {
+        "table": "jobs",
+        "where": {
+          "id": "{{job_id}}",
+          "type": "enrich"
+        },
+        "data": {
+          "status": "done"
+        }
+      },
+      "position": {
+        "x": 1300,
+        "y": 300
+      },
+      "label": "Mark Job Done",
+      "nodeType": "subNode",
+      "parentId": "enrichment-cluster"
+    },
+    {
+      "id": "create-fraud-job",
+      "functionId": "database.insert",
+      "params": {
+        "table": "jobs",
+        "data": {
+          "order_id": "{{order_id}}",
+          "type": "fraud",
+          "status": "pending"
+        }
+      },
+      "position": {
+        "x": 1500,
+        "y": 300
+      },
+      "label": "Create Fraud Job",
+      "nodeType": "subNode",
+      "parentId": "enrichment-cluster"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "message": "Data enrichment pipeline completed"
+      },
+      "position": {
+        "x": 1700,
+        "y": 120
+      },
+      "label": "Pipeline Complete"
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "enrichment-cluster",
+      "action": "default"
+    },
+    {
+      "from": "enrichment-cluster",
+      "to": "find-jobs",
+      "action": "default",
+      "sourceHandle": "find-jobs",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "enrichment-cluster",
+      "to": "fetch-post",
+      "action": "default",
+      "sourceHandle": "fetch-post",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "enrichment-cluster",
+      "to": "parse-post",
+      "action": "default",
+      "sourceHandle": "parse-post",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "enrichment-cluster",
+      "to": "fetch-user",
+      "action": "default",
+      "sourceHandle": "fetch-user",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "enrichment-cluster",
+      "to": "parse-user",
+      "action": "default",
+      "sourceHandle": "parse-user",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "enrichment-cluster",
+      "to": "merge-data",
+      "action": "default",
+      "sourceHandle": "merge-data",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "enrichment-cluster",
+      "to": "update-order",
+      "action": "default",
+      "sourceHandle": "update-order",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "enrichment-cluster",
+      "to": "complete-job",
+      "action": "default",
+      "sourceHandle": "complete-job",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "enrichment-cluster",
+      "to": "create-fraud-job",
+      "action": "default",
+      "sourceHandle": "create-fraud-job",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "enrichment-cluster",
+      "to": "end",
+      "action": "default"
+    }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "updatedAt": "2026-02-04T12:00:00.000Z"
+  }
+}

@@ -38,6 +38,7 @@ function validateJsonSchema(workflow: unknown): ValidationError[] {
 function validateSemantics(workflow: WorkflowDefinition): ValidationError[] {
   const errors: ValidationError[] = [];
   const nodeIds = new Set(workflow.nodes.map((n) => n.id));
+  const nodeMap = new Map(workflow.nodes.map((n) => [n.id, n]));
 
   // Check for duplicate node IDs
   const seenIds = new Set<string>();
@@ -79,7 +80,104 @@ function validateSemantics(workflow: WorkflowDefinition): ValidationError[] {
     }
   }
 
+  // ========================================================================
+  // Cluster Node Validation
+  // ========================================================================
+
+  // Identify cluster root nodes and sub-nodes
+  const clusterRoots = workflow.nodes.filter(
+    (n) => n.nodeType === "clusterRoot",
+  );
+  const subNodes = workflow.nodes.filter((n) => n.nodeType === "subNode");
+
+  // Validate subNode parentId references
+  for (const subNode of subNodes) {
+    if (!subNode.parentId) {
+      errors.push({
+        path: `/nodes/${subNode.id}/parentId`,
+        message: `Sub-node "${subNode.id}" must have a parentId`,
+        severity: "error",
+      });
+      continue;
+    }
+
+    if (!nodeIds.has(subNode.parentId)) {
+      errors.push({
+        path: `/nodes/${subNode.id}/parentId`,
+        message: `Sub-node "${subNode.id}" references non-existent parent "${subNode.parentId}"`,
+        severity: "error",
+      });
+      continue;
+    }
+
+    const parent = nodeMap.get(subNode.parentId);
+    if (parent && parent.nodeType !== "clusterRoot") {
+      errors.push({
+        path: `/nodes/${subNode.id}/parentId`,
+        message: `Sub-node "${subNode.id}" parent "${subNode.parentId}" must be a clusterRoot node`,
+        severity: "error",
+      });
+    }
+  }
+
+  // Validate clusterRoot nodes have bottom handles
+  for (const cluster of clusterRoots) {
+    const hasBottomHandle = cluster.handles?.some(
+      (h) => h.position === "bottom" && h.type === "source",
+    );
+    if (!hasBottomHandle) {
+      errors.push({
+        path: `/nodes/${cluster.id}/handles`,
+        message: `Cluster root "${cluster.id}" should have a bottom source handle for sub-node connections`,
+        severity: "warning",
+      });
+    }
+  }
+
+  // Validate subNode edges (edgeType: "subnode")
+  const subNodeEdges = workflow.edges.filter((e) => e.edgeType === "subnode");
+  for (const edge of subNodeEdges) {
+    const fromNode = nodeMap.get(edge.from);
+    const toNode = nodeMap.get(edge.to);
+
+    if (fromNode && fromNode.nodeType !== "clusterRoot") {
+      errors.push({
+        path: `/edges/${edge.from}->${edge.to}`,
+        message: `Sub-node edge must originate from a clusterRoot node, not "${fromNode.nodeType || "default"}"`,
+        severity: "error",
+      });
+    }
+
+    if (toNode && toNode.nodeType !== "subNode") {
+      errors.push({
+        path: `/edges/${edge.from}->${edge.to}`,
+        message: `Sub-node edge must target a subNode, not "${toNode.nodeType || "default"}"`,
+        severity: "error",
+      });
+    }
+  }
+
+  // Warn about orphaned sub-nodes (no edge from parent)
+  for (const subNode of subNodes) {
+    if (!subNode.parentId) continue;
+
+    const hasEdgeFromParent = workflow.edges.some(
+      (e) =>
+        e.from === subNode.parentId &&
+        e.to === subNode.id &&
+        e.edgeType === "subnode",
+    );
+    if (!hasEdgeFromParent) {
+      errors.push({
+        path: `/nodes/${subNode.id}`,
+        message: `Sub-node "${subNode.id}" has parentId but no sub-node edge from parent "${subNode.parentId}"`,
+        severity: "warning",
+      });
+    }
+  }
+
   // Check for unreachable nodes (warning only)
+  // Sub-nodes are reachable through their cluster root parent
   const reachable = new Set<string>([workflow.flow.startNodeId]);
   let changed = true;
   while (changed) {
@@ -87,6 +185,17 @@ function validateSemantics(workflow: WorkflowDefinition): ValidationError[] {
     for (const edge of workflow.edges) {
       if (reachable.has(edge.from) && !reachable.has(edge.to)) {
         reachable.add(edge.to);
+        changed = true;
+      }
+    }
+    // Also mark sub-nodes as reachable if their parent is reachable
+    for (const subNode of subNodes) {
+      if (
+        subNode.parentId &&
+        reachable.has(subNode.parentId) &&
+        !reachable.has(subNode.id)
+      ) {
+        reachable.add(subNode.id);
         changed = true;
       }
     }

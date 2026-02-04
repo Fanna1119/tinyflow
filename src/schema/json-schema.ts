@@ -14,6 +14,10 @@ export const workflowJsonSchema = {
   required: ["id", "name", "version", "nodes", "edges", "flow"],
   additionalProperties: false,
   properties: {
+    $schema: {
+      type: "string",
+      description: "JSON Schema reference for IDE validation",
+    },
     id: {
       type: "string",
       minLength: 1,
@@ -124,7 +128,8 @@ export const workflowJsonSchema = {
           },
           action: {
             type: "string",
-            enum: ["default", "success", "error", "condition"],
+            description:
+              "Action that triggers this edge (default, success, error, next, complete, or custom)",
           },
           condition: {
             type: "string",

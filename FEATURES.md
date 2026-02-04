@@ -265,6 +265,114 @@ console.log(`Cleaned up ${deleted} old executions`);
 
 ---
 
+## Cluster Nodes (Parallel Sub-Node Execution)
+
+Execute multiple nodes in parallel as children of a cluster root node. Useful for parallel API calls, fan-out patterns, and scatter-gather operations.
+
+### Visual Structure
+
+In the visual editor, cluster nodes appear as:
+
+- **Cluster Root** - A node with a bottom handle that connects to sub-nodes
+- **Sub-Nodes** - Nodes positioned below the cluster root, connected via the bottom handle
+
+### Workflow JSON Structure
+
+```json
+{
+  "nodes": [
+    {
+      "id": "parallel-cluster",
+      "functionId": "core.log",
+      "params": { "message": "Starting parallel operations" },
+      "position": { "x": 100, "y": 0 },
+      "nodeType": "clusterRoot",
+      "handles": [
+        { "id": "right", "type": "source", "position": "right" },
+        { "id": "bottom", "type": "source", "position": "bottom" },
+        { "id": "left", "type": "target", "position": "left" }
+      ]
+    },
+    {
+      "id": "sub-api1",
+      "functionId": "http.request",
+      "params": { "url": "https://api1.example.com" },
+      "position": { "x": 50, "y": 100 },
+      "nodeType": "subNode",
+      "parentId": "parallel-cluster",
+      "handles": [{ "id": "top", "type": "target", "position": "top" }]
+    },
+    {
+      "id": "sub-api2",
+      "functionId": "http.request",
+      "params": { "url": "https://api2.example.com" },
+      "position": { "x": 150, "y": 100 },
+      "nodeType": "subNode",
+      "parentId": "parallel-cluster",
+      "handles": [{ "id": "top", "type": "target", "position": "top" }]
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "parallel-cluster", "action": "default" },
+    {
+      "from": "parallel-cluster",
+      "to": "sub-api1",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "parallel-cluster",
+      "to": "sub-api2",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    { "from": "parallel-cluster", "to": "next-node", "action": "default" }
+  ]
+}
+```
+
+### Execution Behavior
+
+1. **Cluster root executes first** - The cluster root node's function runs
+2. **If successful, sub-nodes run in parallel** - All sub-nodes execute concurrently via `Promise.all()`
+3. **Results are collected** - Sub-node outputs are stored in the shared store
+4. **Flow continues** - Execution proceeds to the next node via the cluster root's "default" edge
+
+### Accessing Sub-Node Outputs
+
+```typescript
+import { getClusterOutputs, getAllClusterOutputs } from "tinyflow/compiler";
+
+// In a downstream node or after execution
+const clusterOutputs = getClusterOutputs(store, "parallel-cluster");
+// Returns: { "sub-api1": {...}, "sub-api2": {...} }
+
+// Or get all cluster outputs
+const allOutputs = getAllClusterOutputs(store);
+// Returns: { "parallel-cluster": { "sub-api1": {...}, "sub-api2": {...} } }
+
+// Legacy format (also available)
+const legacyOutputs = store.data.get("_subNodeOutputs");
+// Returns: { "sub-api1": {...}, "sub-api2": {...} }
+```
+
+### Validation Rules
+
+The compiler validates:
+
+- Sub-nodes must have a `parentId` property
+- `parentId` must reference an existing `clusterRoot` node
+- Sub-node edges (`edgeType: "subnode"`) must originate from a `clusterRoot`
+- Sub-node edges must target a `subNode`
+
+### Error Handling
+
+- If the cluster root fails, sub-nodes are **not** executed
+- If any sub-node fails, the error is recorded but other sub-nodes complete
+- The first sub-node failure is stored in `shared.lastError`
+
+---
+
 ## Testing Harness
 
 Utilities for testing workflows with assertions and mocks.

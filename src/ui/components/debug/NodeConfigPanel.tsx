@@ -48,6 +48,8 @@ interface NodeConfigPanelProps {
   onAddHandle?: (label?: string) => void;
   /** Remove a handle from cluster root */
   onRemoveHandle?: (handleId: string) => void;
+  /** Rename a handle */
+  onRenameHandle?: (handleId: string, newLabel: string) => void;
 }
 
 type TabType = "params" | "test";
@@ -70,8 +72,11 @@ export function NodeConfigPanel({
   onConvertToRegularNode,
   onAddHandle,
   onRemoveHandle,
+  onRenameHandle,
 }: NodeConfigPanelProps) {
   const metadata = registry.get(functionId)?.metadata;
+  const [editingHandleId, setEditingHandleId] = useState<string | null>(null);
+  const [editingHandleLabel, setEditingHandleLabel] = useState("");
   const [localParams, setLocalParams] = useState(params);
   const [localLabel, setLocalLabel] = useState(label);
   const [jsonMode, setJsonMode] = useState(false);
@@ -319,7 +324,7 @@ export function NodeConfigPanel({
                           className="flex items-center gap-2 text-sm"
                         >
                           <div
-                            className="w-3 h-3 rounded-full"
+                            className="w-3 h-3 rounded-full shrink-0"
                             style={{
                               backgroundColor: [
                                 "#a855f7",
@@ -330,12 +335,55 @@ export function NodeConfigPanel({
                               ][index % 5],
                             }}
                           />
-                          <span className="font-mono text-gray-700 dark:text-gray-300">
-                            {handle.label ?? handle.id}
-                          </span>
+                          {editingHandleId === handle.id ? (
+                            <input
+                              type="text"
+                              value={editingHandleLabel}
+                              onChange={(e) =>
+                                setEditingHandleLabel(e.target.value)
+                              }
+                              onBlur={() => {
+                                if (editingHandleLabel.trim()) {
+                                  onRenameHandle?.(
+                                    handle.id,
+                                    editingHandleLabel.trim(),
+                                  );
+                                }
+                                setEditingHandleId(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  if (editingHandleLabel.trim()) {
+                                    onRenameHandle?.(
+                                      handle.id,
+                                      editingHandleLabel.trim(),
+                                    );
+                                  }
+                                  setEditingHandleId(null);
+                                } else if (e.key === "Escape") {
+                                  setEditingHandleId(null);
+                                }
+                              }}
+                              className="flex-1 min-w-0 px-1.5 py-0.5 text-sm font-mono bg-white dark:bg-gray-800 border border-purple-300 dark:border-purple-600 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                              autoFocus
+                            />
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setEditingHandleId(handle.id);
+                                setEditingHandleLabel(
+                                  handle.label ?? handle.id,
+                                );
+                              }}
+                              className="flex-1 min-w-0 text-left font-mono text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 truncate"
+                              title="Click to rename"
+                            >
+                              {handle.label ?? handle.id}
+                            </button>
+                          )}
                           <button
                             onClick={() => onRemoveHandle?.(handle.id)}
-                            className="ml-auto p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                            className="shrink-0 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
                             title="Remove handle"
                           >
                             <Trash2 className="w-3 h-3" />
