@@ -1,0 +1,73 @@
+{
+  "id": "weather-activities",
+  "name": "Weather-based Activity Suggestions",
+  "description": "Fetches current weather from Open-Meteo and asks an LLM for activity suggestions.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "input": {
+          "location": {
+            "name": "San Francisco",
+            "latitude": 37.7749,
+            "longitude": -122.4194
+          }
+        }
+      },
+      "position": { "x": 100, "y": 150 }
+    },
+    {
+      "id": "fetch-weather",
+      "functionId": "http.request",
+      "params": {
+        "url": "https://api.open-meteo.com/v1/forecast?latitude=37.7749&longitude=-122.4194&current_weather=true",
+        "method": "GET",
+        "outputKey": "weather"
+      },
+      "position": { "x": 350, "y": 150 }
+    },
+    {
+      "id": "build-prompt",
+      "functionId": "transform.template",
+      "params": {
+        "template": "You are a friendly local guide. The current weather in {{input.location.name}} is: temperature {{weather.data.current_weather.temperature}}°C, wind speed {{weather.data.current_weather.windspeed}} m/s, weather code {{weather.data.current_weather.weathercode}}. Suggest 5 nice activities appropriate for this weather and briefly explain why each is suitable.",
+        "outputKey": "prompt"
+      },
+      "position": { "x": 650, "y": 150 }
+    },
+    {
+      "id": "ask-llm",
+      "functionId": "llm.chat",
+      "params": {
+        "systemPrompt": "You are a helpful assistant that suggests activities based on current weather.",
+        "promptKey": "prompt",
+        "outputKey": "activities",
+        "simulate": true
+      },
+      "position": { "x": 950, "y": 150 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "activities"
+      },
+      "position": { "x": 1200, "y": 150 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "fetch-weather", "action": "default" },
+    { "from": "fetch-weather", "to": "build-prompt", "action": "success" },
+    { "from": "build-prompt", "to": "ask-llm", "action": "default" },
+    { "from": "ask-llm", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "pattern": "weather-activities",
+    "source": "open-meteo"
+  }
+}
