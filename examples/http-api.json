@@ -1,150 +1,52 @@
 {
   "id": "example-http-api",
   "name": "HTTP API Workflow",
-  "description": "Fetches data from an API and processes it using cluster nodes",
+  "description": "Fetches data from an API and processes it",
   "version": "1.0.0",
   "nodes": [
     {
       "id": "start",
-      "type": "regular",
       "functionId": "core.start",
       "params": {},
-      "position": {
-        "x": 100,
-        "y": 150
-      },
+      "position": { "x": 100, "y": 150 },
       "label": "Start"
     },
     {
       "id": "fetch-todo",
-      "type": "regular",
-      "functionId": "http.get",
+      "functionId": "http.request",
       "params": {
         "url": "https://jsonplaceholder.typicode.com/todos/2",
+        "method": "GET",
         "outputKey": "todo"
       },
-      "position": {
-        "x": 300,
-        "y": 150
-      },
+      "position": { "x": 300, "y": 150 },
       "label": "Fetch Todo"
     },
     {
-      "id": "process-data-cluster",
-      "type": "cluster",
-      "label": "Process Data",
-      "description": "Extracts and formats the todo data",
-      "position": {
-        "x": 550,
-        "y": 100
+      "id": "format-message",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "message",
+        "value": "Todo fetched successfully"
       },
-      "entryNodeId": "extract-title",
-      "exitNodeIds": ["format-message"],
-      "collapsed": false,
-      "subNodes": [
-        {
-          "id": "extract-title",
-          "type": "regular",
-          "functionId": "transform.map",
-          "params": {
-            "inputKey": "todo",
-            "path": "title",
-            "outputKey": "todoTitle"
-          },
-          "position": {
-            "x": 50,
-            "y": 50
-          },
-          "label": "Extract Title"
-        },
-        {
-          "id": "format-message",
-          "type": "regular",
-          "functionId": "transform.template",
-          "params": {
-            "template": "Todo item: {{todoTitle}}",
-            "outputKey": "message"
-          },
-          "position": {
-            "x": 50,
-            "y": 130
-          },
-          "label": "Format Message"
-        }
-      ],
-      "internalEdges": [
-        {
-          "from": "extract-title",
-          "to": "format-message",
-          "action": "default"
-        }
-      ]
+      "position": { "x": 550, "y": 150 },
+      "label": "Format Message"
     },
     {
-      "id": "output-cluster",
-      "type": "cluster",
-      "label": "Output Results",
-      "description": "Logs and returns the final message",
-      "position": {
-        "x": 850,
-        "y": 100
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "message"
       },
-      "entryNodeId": "log-message",
-      "exitNodeIds": ["end"],
-      "collapsed": false,
-      "subNodes": [
-        {
-          "id": "log-message",
-          "type": "regular",
-          "functionId": "core.log",
-          "params": {
-            "key": "message"
-          },
-          "position": {
-            "x": 50,
-            "y": 50
-          },
-          "label": "Log Message"
-        },
-        {
-          "id": "end",
-          "type": "regular",
-          "functionId": "core.end",
-          "params": {
-            "outputKey": "message"
-          },
-          "position": {
-            "x": 50,
-            "y": 130
-          },
-          "label": "End"
-        }
-      ],
-      "internalEdges": [
-        {
-          "from": "log-message",
-          "to": "end",
-          "action": "default"
-        }
-      ]
+      "position": { "x": 800, "y": 150 },
+      "label": "End"
     }
   ],
   "edges": [
-    {
-      "from": "start",
-      "to": "fetch-todo",
-      "action": "default"
-    },
-    {
-      "from": "fetch-todo",
-      "to": "process-data-cluster",
-      "action": "success"
-    },
-    {
-      "from": "process-data-cluster",
-      "to": "output-cluster",
-      "action": "default"
-    }
+    { "from": "start", "to": "fetch-todo", "action": "default" },
+    { "from": "fetch-todo", "to": "format-message", "action": "default" },
+    { "from": "fetch-todo", "to": "format-message", "action": "success" },
+    { "from": "format-message", "to": "end", "action": "default" }
   ],
   "flow": {
     "startNodeId": "start"

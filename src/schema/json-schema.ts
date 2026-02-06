@@ -176,7 +176,7 @@ export const workflowJsonSchema = {
     },
     metadata: {
       type: "object",
-      additionalProperties: false,
+      additionalProperties: true,
       properties: {
         author: { type: "string" },
         createdAt: { type: "string", format: "date-time" },

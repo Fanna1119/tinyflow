@@ -1,0 +1,93 @@
+{
+  "id": "pattern-multi-agent",
+  "name": "Multi-Agent Pattern",
+  "description": "Coordinates multiple agents working in parallel on different aspects of a task. Uses cluster nodes for parallel execution.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "input": {
+          "topic": "Climate change and its effects on global agriculture"
+        }
+      },
+      "position": { "x": 100, "y": 200 }
+    },
+    {
+      "id": "coordinator",
+      "functionId": "core.log",
+      "params": {
+        "key": "input.topic",
+        "message": "Dispatching research task to specialized agents"
+      },
+      "nodeType": "clusterRoot",
+      "position": { "x": 300, "y": 200 }
+    },
+    {
+      "id": "researcher-agent",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "research",
+        "value": "Research findings: Climate change impacts crop yields by 10-25% in affected regions"
+      },
+      "nodeType": "subNode",
+      "parentId": "coordinator",
+      "position": { "x": 500, "y": 100 }
+    },
+    {
+      "id": "analyst-agent",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "analysis",
+        "value": "Analysis: Economic impact estimated at $50B annually by 2030"
+      },
+      "nodeType": "subNode",
+      "parentId": "coordinator",
+      "position": { "x": 500, "y": 200 }
+    },
+    {
+      "id": "writer-agent",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "summary",
+        "value": "Summary: Urgent action needed to mitigate agricultural climate risks"
+      },
+      "nodeType": "subNode",
+      "parentId": "coordinator",
+      "position": { "x": 500, "y": 300 }
+    },
+    {
+      "id": "synthesize",
+      "functionId": "transform.merge",
+      "params": {
+        "keys": ["research", "analysis", "summary"],
+        "outputKey": "finalReport"
+      },
+      "position": { "x": 700, "y": 200 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "finalReport"
+      },
+      "position": { "x": 900, "y": 200 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "coordinator", "action": "default" },
+    { "from": "coordinator", "to": "researcher-agent", "action": "default", "edgeType": "subnode" },
+    { "from": "coordinator", "to": "analyst-agent", "action": "default", "edgeType": "subnode" },
+    { "from": "coordinator", "to": "writer-agent", "action": "default", "edgeType": "subnode" },
+    { "from": "coordinator", "to": "synthesize", "action": "default" },
+    { "from": "synthesize", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "pattern": "multi-agent",
+    "description": "Parallel agent coordination using cluster nodes"
+  }
+}

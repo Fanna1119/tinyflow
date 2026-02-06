@@ -3,7 +3,7 @@
  * Transforms workflow JSON + registry into executable PocketFlow Flow
  */
 
-import { Node, Flow } from "pocketflow";
+import { Node, Flow, ParallelBatchNode } from "pocketflow";
 import type {
   WorkflowDefinition,
   WorkflowNode,
@@ -50,6 +50,18 @@ export interface DebugCallbacks {
   onNodeComplete?: (nodeId: string, success: boolean, output: unknown) => void;
 }
 
+/**
+ * Memory limits for execution to prevent unbounded growth
+ */
+export interface MemoryLimits {
+  /** Maximum number of log entries (default: 1000) */
+  maxLogs?: number;
+  /** Maximum number of stored node results (default: 1000) */
+  maxNodeResults?: number;
+  /** Maximum size of data store in bytes (default: 10MB) */
+  maxDataSize?: number;
+}
+
 export interface CompiledStore {
   /** Shared data store */
   data: Map<string, unknown>;
@@ -65,6 +77,47 @@ export interface CompiledStore {
   mockValues?: Map<string, MockValue>;
   /** Debug callbacks */
   debugCallbacks?: DebugCallbacks;
+  /** Memory limits configuration */
+  memoryLimits?: MemoryLimits;
+}
+
+/**
+ * Enforce memory limits on a CompiledStore
+ */
+function enforceMemoryLimits(store: CompiledStore): void {
+  const limits = store.memoryLimits ?? {
+    maxLogs: 1000,
+    maxNodeResults: 1000,
+    maxDataSize: 10 * 1024 * 1024, // 10MB
+  };
+
+  // Limit logs
+  if (store.logs.length > limits.maxLogs!) {
+    const excess = store.logs.length - limits.maxLogs!;
+    store.logs.splice(0, excess);
+    store.logs.unshift(`[SYSTEM] Log truncated: removed ${excess} old entries`);
+  }
+
+  // Limit node results
+  if (store.nodeResults.size > limits.maxNodeResults!) {
+    const entries = Array.from(store.nodeResults.entries());
+    const excess = entries.length - limits.maxNodeResults!;
+    for (let i = 0; i < excess; i++) {
+      store.nodeResults.delete(entries[i][0]);
+    }
+  }
+
+  // Rough data size check (serialize and check length)
+  try {
+    const dataSize = JSON.stringify(Object.fromEntries(store.data)).length;
+    if (dataSize > limits.maxDataSize!) {
+      store.logs.push(
+        `[SYSTEM] Warning: Data store size (${dataSize} bytes) exceeds limit (${limits.maxDataSize} bytes)`,
+      );
+    }
+  } catch (e) {
+    // Ignore serialization errors for size checking
+  }
 }
 
 /**
@@ -188,8 +241,190 @@ class TinyFlowNode extends Node<CompiledStore> {
       shared.lastError = { nodeId, error: execRes.error ?? "Unknown error" };
     }
 
+    // Enforce memory limits after each node execution
+    enforceMemoryLimits(shared);
+
     // Return action for edge routing
     return execRes.action ?? (execRes.success ? "default" : "error");
+  }
+}
+
+/**
+ * A PocketFlow ParallelBatchNode for processing arrays with forEach semantics
+ * Processes each array item in parallel and collects results
+ */
+class TinyFlowBatchNode extends ParallelBatchNode<CompiledStore> {
+  private _shared: CompiledStore | null = null;
+
+  constructor(
+    private nodeConfig: WorkflowNode,
+    private flowEnvs: Record<string, string> = {},
+  ) {
+    // maxRetries defaults to 1 (required for PocketFlow to execute exec at least once)
+    // wait time in PocketFlow is in seconds, we convert from ms
+    super(
+      nodeConfig.runtime?.maxRetries ?? 1,
+      (nodeConfig.runtime?.retryDelay ?? 0) / 1000,
+    );
+  }
+
+  async prep(shared: CompiledStore): Promise<unknown[]> {
+    // Store shared reference for use in exec
+    this._shared = shared;
+
+    // Call onBeforeNode callback (can pause for step-by-step mode)
+    await shared.debugCallbacks?.onBeforeNode?.(this.nodeConfig.id);
+
+    // Call debug callback for node start
+    const params = this.nodeConfig.params as Record<string, unknown>;
+    shared.debugCallbacks?.onNodeStart?.(this.nodeConfig.id, params);
+
+    // For batchForEach, get the array from params
+    const array = params.array as unknown[];
+    if (!Array.isArray(array)) {
+      throw new Error(
+        `BatchForEach: "${JSON.stringify(array)}" is not an array`,
+      );
+    }
+
+    shared.logs.push(
+      `[${this.nodeConfig.id}] BatchForEach: Processing ${array.length} items in parallel`,
+    );
+    console.log(
+      `[${this.nodeConfig.id}] BatchForEach: Processing ${array.length} items in parallel`,
+    );
+
+    return array;
+  }
+
+  async exec(item: unknown): Promise<FunctionResult> {
+    const shared = this._shared!;
+
+    // Check for mock value
+    const mockValue = shared.mockValues?.get(this.nodeConfig.id);
+    if (mockValue?.enabled) {
+      // Simulate delay if specified
+      if (mockValue.delay && mockValue.delay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, mockValue.delay));
+      }
+
+      shared.logs.push(
+        `[${this.nodeConfig.id}] [MOCK] Using mocked value for item`,
+      );
+      console.log(`[${this.nodeConfig.id}] [MOCK] Using mocked value for item`);
+
+      return {
+        output: mockValue.output,
+        success: mockValue.success,
+        action: mockValue.action,
+        error: mockValue.success ? undefined : "Mocked failure",
+      };
+    }
+
+    // For batchForEach, get the processor function from params
+    const processorFunction = this.nodeConfig.params
+      ?.processorFunction as string;
+    const processorParams =
+      (this.nodeConfig.params?.processorParams as Record<string, unknown>) ??
+      {};
+
+    const fn = registry.getExecutable(processorFunction);
+
+    if (!fn) {
+      return {
+        output: null,
+        success: false,
+        error: `Processor function "${processorFunction}" is not registered`,
+      };
+    }
+
+    // Merge environments: flow envs < node envs
+    const env = {
+      ...this.flowEnvs,
+      ...this.nodeConfig.envs,
+    };
+
+    // Create a temporary store for this item processing
+    const itemStore = new Map(shared.data);
+
+    // Set the current item in the store
+    itemStore.set("currentItem", item);
+
+    const context: ExecutionContext = {
+      nodeId: this.nodeConfig.id,
+      store: itemStore,
+      env,
+      log: (message: string) => {
+        shared.logs.push(`[${this.nodeConfig.id}] ${message}`);
+        console.log(`[${this.nodeConfig.id}] ${message}`);
+      },
+    };
+
+    // Merge processor params with item-specific params
+    const mergedParams = {
+      ...processorParams,
+      currentItem: item,
+    };
+
+    try {
+      return await fn(mergedParams, context);
+    } catch (e) {
+      const error = e instanceof Error ? e.message : "Unknown error";
+      return {
+        output: null,
+        success: false,
+        error,
+      };
+    }
+  }
+
+  async post(
+    shared: CompiledStore,
+    _prepRes: unknown[],
+    execRes: FunctionResult[],
+  ): Promise<string | undefined> {
+    const nodeId = this.nodeConfig.id;
+
+    // Store batch results
+    shared.nodeResults.set(nodeId, {
+      output: execRes.map((r) => r.output),
+      success: execRes.every((r) => r.success),
+      action: "complete",
+    });
+
+    // Store individual results in the output key
+    const outputKey =
+      (this.nodeConfig.params?.outputKey as string) ?? "batchResults";
+    const results = execRes.map((r) => r.output);
+    shared.data.set(outputKey, results);
+
+    // Call debug callback for node complete
+    shared.debugCallbacks?.onNodeComplete?.(
+      nodeId,
+      execRes.every((r) => r.success),
+      results,
+    );
+
+    // Log execution
+    const successCount = execRes.filter((r) => r.success).length;
+    const totalCount = execRes.length;
+    const status = execRes.every((r) => r.success) ? "✓" : "✗";
+    shared.logs.push(
+      `[${status}] ${nodeId}: Processed ${successCount}/${totalCount} items`,
+    );
+
+    // Handle errors
+    const failedResults = execRes.filter((r) => !r.success);
+    if (failedResults.length > 0) {
+      const errorMsg = `Failed to process ${failedResults.length} items`;
+      shared.lastError = { nodeId, error: errorMsg };
+    }
+
+    // Enforce memory limits after each node execution
+    enforceMemoryLimits(shared);
+
+    // Return action for edge routing
+    return execRes.every((r) => r.success) ? "default" : "error";
   }
 }
 
@@ -284,8 +519,11 @@ export function compileWorkflow(
     subNodeEdgesByParent.set(edge.from, edges);
   }
 
-  // Build node map - use ClusterRootNode for cluster roots, skip sub-nodes
-  const nodeMap = new Map<string, TinyFlowNode | ClusterRootNode>();
+  // Build node map - use ClusterRootNode for cluster roots, TinyFlowBatchNode for forEach, skip sub-nodes
+  const nodeMap = new Map<
+    string,
+    TinyFlowNode | ClusterRootNode | TinyFlowBatchNode
+  >();
 
   for (const nodeDef of workflow.nodes) {
     // Skip sub-nodes - they'll be handled by their parent cluster root
@@ -300,6 +538,10 @@ export function compileWorkflow(
       const childEdges = subNodeEdgesByParent.get(nodeDef.id) ?? [];
       clusterNode.setSubNodes(childConfigs, childEdges);
       nodeMap.set(nodeDef.id, clusterNode);
+    } else if (nodeDef.functionId === "control.batchForEach") {
+      // Create a TinyFlowBatchNode for batchForEach functions
+      const node = new TinyFlowBatchNode(nodeDef, flowEnvs);
+      nodeMap.set(nodeDef.id, node);
     } else {
       // Regular node
       const node = new TinyFlowNode(nodeDef, flowEnvs);
@@ -396,6 +638,7 @@ export function createStore(
   env: Record<string, string> = {},
   mockValues?: Map<string, MockValue>,
   debugCallbacks?: DebugCallbacks,
+  memoryLimits?: MemoryLimits,
 ): CompiledStore {
   return {
     data: new Map(Object.entries(initialData)),
@@ -404,5 +647,10 @@ export function createStore(
     nodeResults: new Map(),
     mockValues,
     debugCallbacks,
+    memoryLimits: memoryLimits ?? {
+      maxLogs: 1000,
+      maxNodeResults: 1000,
+      maxDataSize: 10 * 1024 * 1024, // 10MB
+    },
   };
 }

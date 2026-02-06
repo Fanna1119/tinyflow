@@ -39,6 +39,8 @@ export interface ExecutionOptions {
   onError?: (nodeId: string, error: string) => void;
   /** Mock values for testing - map of nodeId to mock result */
   mockValues?: Map<string, MockValue>;
+  /** Memory limits for execution */
+  memoryLimits?: import("../compiler").MemoryLimits;
 }
 
 export interface ExecutionResult {
@@ -121,7 +123,7 @@ export class Runtime {
     if (!this.compiledFlow) {
       return {
         success: false,
-        store: createStore(),
+        store: createStore({}, {}, undefined, undefined, options.memoryLimits),
         logs: ["No workflow loaded"],
         error: { nodeId: "", message: "No workflow loaded" },
         duration: 0,
@@ -146,6 +148,7 @@ export class Runtime {
       },
       options.mockValues,
       debugCallbacks,
+      options.memoryLimits,
     );
 
     // Set up logging callback
@@ -213,7 +216,7 @@ export class Runtime {
     if (!compilation.success) {
       return {
         success: false,
-        store: createStore(),
+        store: createStore({}, {}, undefined, undefined, options.memoryLimits),
         logs: compilation.errors,
         error: { nodeId: "", message: compilation.errors.join("; ") },
         duration: 0,
@@ -236,7 +239,7 @@ export class Runtime {
     if (!compilation.success) {
       return {
         success: false,
-        store: createStore(),
+        store: createStore({}, {}, undefined, undefined, options.memoryLimits),
         logs: compilation.errors,
         error: { nodeId: "", message: compilation.errors.join("; ") },
         duration: 0,

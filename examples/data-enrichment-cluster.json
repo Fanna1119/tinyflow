@@ -79,14 +79,11 @@
     },
     {
       "id": "find-jobs",
-      "functionId": "database.findMany",
+      "functionId": "http.request",
       "params": {
-        "table": "jobs",
-        "where": {
-          "type": "enrich",
-          "status": "pending"
-        },
-        "limit": 10
+        "url": "https://jsonplaceholder.typicode.com/posts/1",
+        "method": "GET",
+        "outputKey": "jobs"
       },
       "position": {
         "x": -100,
@@ -178,7 +175,7 @@
     },
     {
       "id": "update-order",
-      "functionId": "database.update",
+      "functionId": "core.setValue",
       "params": {
         "table": "orders",
         "where": {
@@ -198,16 +195,9 @@
     },
     {
       "id": "complete-job",
-      "functionId": "database.update",
+      "functionId": "core.log",
       "params": {
-        "table": "jobs",
-        "where": {
-          "id": "{{job_id}}",
-          "type": "enrich"
-        },
-        "data": {
-          "status": "done"
-        }
+        "message": "Job marked complete"
       },
       "position": {
         "x": 1300,
@@ -219,14 +209,9 @@
     },
     {
       "id": "create-fraud-job",
-      "functionId": "database.insert",
+      "functionId": "core.log",
       "params": {
-        "table": "jobs",
-        "data": {
-          "order_id": "{{order_id}}",
-          "type": "fraud",
-          "status": "pending"
-        }
+        "message": "Fraud job created if needed"
       },
       "position": {
         "x": 1500,

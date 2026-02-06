@@ -1,0 +1,75 @@
+{
+  "id": "pattern-workflow-pipeline",
+  "name": "Workflow Pipeline Pattern",
+  "description": "Chains multiple tasks into a linear pipeline.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "input": {
+          "rawData": "  Hello, World!   This is   some    messy   text.  "
+        }
+      },
+      "position": { "x": 100, "y": 200 }
+    },
+    {
+      "id": "step1-extract",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "extracted",
+        "value": "Extraction complete"
+      },
+      "position": { "x": 250, "y": 200 }
+    },
+    {
+      "id": "step2-transform",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "transformed",
+        "value": "Transform complete"
+      },
+      "position": { "x": 400, "y": 200 }
+    },
+    {
+      "id": "step3-validate",
+      "functionId": "control.condition",
+      "params": {
+        "leftKey": "transformed",
+        "operator": "truthy"
+      },
+      "position": { "x": 550, "y": 200 }
+    },
+    {
+      "id": "step4-format",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "finalOutput",
+        "value": "Final: Pipeline processed successfully"
+      },
+      "position": { "x": 700, "y": 150 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "finalOutput"
+      },
+      "position": { "x": 900, "y": 200 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "step1-extract", "action": "default" },
+    { "from": "step1-extract", "to": "step2-transform", "action": "default" },
+    { "from": "step2-transform", "to": "step3-validate", "action": "default" },
+    { "from": "step3-validate", "to": "step4-format", "action": "success" },
+    { "from": "step4-format", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "pattern": "linear-pipeline"
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "id": "example-batch-processing",
+  "name": "Batch Processing Example",
+  "description": "Demonstrates PocketFlow batch processing integration with parallel array processing",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "input": {
+          "numbers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        }
+      },
+      "position": { "x": 100, "y": 100 }
+    },
+    {
+      "id": "batch-double",
+      "functionId": "control.batchForEach",
+      "params": {
+        "array": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        "processorFunction": "transform.double",
+        "outputKey": "doubledNumbers",
+        "maxConcurrency": 5
+      },
+      "position": { "x": 300, "y": 100 }
+    },
+    {
+      "id": "log-result",
+      "functionId": "core.log",
+      "params": {
+        "key": "doubledNumbers",
+        "message": "Batch processing complete: {{doubledNumbers}}"
+      },
+      "position": { "x": 500, "y": 100 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "doubledNumbers"
+      },
+      "position": { "x": 700, "y": 100 }
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "batch-double",
+      "action": "default"
+    },
+    {
+      "from": "batch-double",
+      "to": "log-result",
+      "action": "default"
+    },
+    {
+      "from": "log-result",
+      "to": "end",
+      "action": "default"
+    }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  }
+}

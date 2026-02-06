@@ -1,0 +1,120 @@
+{
+  "id": "pattern-rag",
+  "name": "RAG Pattern",
+  "description": "Retrieves context and generates response",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "input": {
+          "question": "What are the shipping options?"
+        }
+      },
+      "position": { "x": 100, "y": 200 }
+    },
+    {
+      "id": "generate-response",
+      "functionId": "llm.chat",
+      "params": {
+        "systemPrompt": "You are a helpful assistant",
+        "promptKey": "input.question",
+        "outputKey": "answer",
+        "simulate": true
+      },
+      "position": { "x": 300, "y": 200 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "answer"
+      },
+      "position": { "x": 500, "y": 200 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "generate-response", "action": "default" },
+    { "from": "generate-response", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  }
+}
+
+          "knowledgeBase": [
+            "Standard shipping takes 5-7 business days and costs $5.99",
+            "Express shipping takes 2-3 business days and costs $12.99",
+            "Same-day delivery is available in select cities for $24.99",
+            "Free shipping on orders over $50"
+          ]
+        }
+      },
+      "position": { "x": 100, "y": 200 }
+    },
+    {
+      "id": "retrieve-context",
+      "functionId": "transform.filter",
+      "params": {
+        "arrayKey": "input.knowledgeBase",
+        "condition": "contains",
+        "field": "",
+        "value": "shipping",
+        "outputKey": "relevantContext"
+      },
+      "position": { "x": 350, "y": 200 }
+    },
+    {
+      "id": "format-context",
+      "functionId": "transform.jsonStringify",
+      "params": {
+        "inputKey": "relevantContext",
+        "outputKey": "contextString"
+      },
+      "position": { "x": 550, "y": 200 }
+    },
+    {
+      "id": "set-question",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "question",
+        "value": "What are the shipping options?"
+      },
+      "position": { "x": 200, "y": 200 }
+    },
+    {
+      "id": "generate-response",
+      "functionId": "llm.chat",
+      "params": {
+        "systemPrompt": "You are a helpful customer service assistant answering shipping questions.",
+        "promptKey": "input.question",
+        "outputKey": "answer",
+        "simulate": true
+      },
+      "position": { "x": 400, "y": 200 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "answer"
+      },
+      "position": { "x": 950, "y": 200 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "retrieve-context", "action": "default" },
+    { "from": "retrieve-context", "to": "format-context", "action": "default" },
+    { "from": "format-context", "to": "set-question", "action": "default" },
+    { "from": "set-question", "to": "generate-response", "action": "default" },
+    { "from": "generate-response", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "pattern": "rag",
+    "description": "Combines retrieval with LLM generation for grounded responses"
+  }
+}

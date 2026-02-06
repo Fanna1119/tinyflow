@@ -14,6 +14,35 @@ import {
 import type { CompiledStore } from "./compiler";
 
 /**
+ * Simple concurrency limiter for controlling parallel execution
+ */
+class ConcurrencyLimiter {
+  private running = 0;
+  private queue: Array<() => void> = [];
+
+  constructor(private maxConcurrency: number = 10) {}
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.running >= this.maxConcurrency) {
+      await new Promise<void>((resolve) => {
+        this.queue.push(resolve);
+      });
+    }
+
+    this.running++;
+    try {
+      return await fn();
+    } finally {
+      this.running--;
+      if (this.queue.length > 0) {
+        const next = this.queue.shift()!;
+        next();
+      }
+    }
+  }
+}
+
+/**
  * ClusterRootNode executes its own function, then runs all attached
  * sub-nodes in parallel using Promise.all(). After all sub-nodes complete,
  * execution continues to the next node via the "default" action.
@@ -81,18 +110,19 @@ export class ClusterRootNode extends Node<CompiledStore> {
       return rootResult;
     }
 
-    // Execute all sub-nodes in parallel
+    // Execute all sub-nodes in parallel with concurrency limit
     if (this.subNodeConfigs.length > 0) {
       shared.logs.push(
-        `[${config.id}] Executing ${this.subNodeConfigs.length} sub-nodes in parallel`,
+        `[${config.id}] Executing ${this.subNodeConfigs.length} sub-nodes in parallel (max concurrency: 10)`,
       );
       console.log(
-        `[${config.id}] Executing ${this.subNodeConfigs.length} sub-nodes in parallel`,
+        `[${config.id}] Executing ${this.subNodeConfigs.length} sub-nodes in parallel (max concurrency: 10)`,
       );
 
+      const limiter = new ConcurrencyLimiter(10);
       const subNodeResults = await Promise.all(
         this.subNodeConfigs.map((subConfig) =>
-          this.executeSubNode(subConfig, shared),
+          limiter.run(() => this.executeSubNode(subConfig, shared)),
         ),
       );
 
