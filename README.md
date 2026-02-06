@@ -17,7 +17,41 @@ A visual workflow editor and runtime built with React Flow and [PocketFlow](http
 - 🚀 **High Performance** - Powered by Bun runtime for fast execution
 - 🧳 **Tiny bundle size** - Minimal dependencies for lightweight deployments
 
-<!-- image example from public dir  example1.png-->
+**Recent updates (Feb 2026)**
+
+- Server-side execution & bundling: bundles are built and run only on the server (Vite dev server plugin). Generated bundles are written to `dist/{outputDir}` by the dev-server API instead of being downloaded from the browser.
+- Dev-server environment handling: the Vite dev plugin loads `.env` files server-side (using Vite's `loadEnv`) and exposes masked variables to the UI via a `/api/env-vars` endpoint. Use `OPENAI_` and `VITE_` prefixed variables for LLM and client config.
+- UI: Settings now fetch environment variables from the server and display masked values; the Bundle UI posts build requests to the server (`/api/build-bundle`) and shows the output path/files.
+- Debugger: step-through (step-mode) support and improved event playback for manual stepping.
+- Editor: multi-tab workflow editing removed to simplify sync; import/export and duplicate-edge fixes applied.
+- Examples: updated example flows (for example `examples/agentic-support-ticket.json`) to call LLM functions by default (simulate: false) and to use action-based routing where appropriate.
+
+- UI: Data-flow aware editing and improved key connections — the editor now analyzes upstream data keys and surfaces them in the node configuration panel, provides a suggestion dropdown for key-based parameters (e.g. `outputKey`, `promptKey`, `inputKey`), and shows compact data-port indicators on nodes to make produced/consumed keys visible on the canvas.
+
+### Data Flow Aware Editor (Feb 2026)
+
+New UX and developer features to make connecting node inputs/outputs easier and less error-prone:
+
+- **Automatic data flow analysis**: the editor runs a lightweight upstream graph analysis to collect store keys produced by upstream nodes and exposes them to the UI for suggestions. (Implementation: `src/ui/hooks/useDataFlowAnalysis.ts`)
+
+- **Key suggestion input**: key-referencing parameters (for example `outputKey`, `promptKey`, `inputKey`, `fromKey`) now use a searchable dropdown that lists available upstream keys, supports keyboard navigation, and indicates when a value matches an upstream producer. (Implementation: `src/ui/components/dataflow/KeySuggestionInput.tsx`)
+
+- **Data port indicators**: nodes display compact pills on their body that show which store keys they produce (outputs) and consume (inputs). Consumed keys highlight when matched to an upstream producer. This gives an at-a-glance view of data propagation. (Implementation: `src/ui/components/dataflow/DataPorts.tsx`, rendered by `src/ui/components/nodes/CustomNodes.tsx`)
+
+- **Node config integration**: the `NodeConfigPanel` displays "Available upstream data" and uses the suggestion input for relevant params. This reduces typing errors and speeds up mapping data between nodes. (Implementation: `src/ui/components/debug/NodeConfigPanel.tsx`)
+
+Developer notes:
+
+- The editor wires data flow into the node render pipeline in `src/ui/components/editor/FlowEditor.tsx` by enriching node `data` with `producedKeys`, `consumedKeys`, and `connectedInputs` for rendering and suggestion context.
+- These features are UI-only and do not change runtime semantics — workflows exported to JSON remain compatible with the schema. The analysis uses parameter conventions (e.g. `outputKey`, `promptKey`) and template parsing for `transform.template` to infer keys.
+
+Quick paths to the new files:
+
+- `src/ui/hooks/useDataFlowAnalysis.ts`
+- `src/ui/components/dataflow/KeySuggestionInput.tsx`
+- `src/ui/components/dataflow/DataPorts.tsx`
+- `src/ui/components/nodes/CustomNodes.tsx` (renders data ports)
+- `src/ui/components/debug/NodeConfigPanel.tsx` (shows suggestions and available keys)
 
 <div align="center">
   <img src="/public/example1.png" alt="Pocket Flow – 100-line minimalist LLM framework" width="600"/>
@@ -52,7 +86,11 @@ OPENAI_API_KEY=sk-your-api-key-here
 TINYFLOW_DEBUG=true
 ```
 
-Environment variables with `OPENAI_` or `TINYFLOW_` prefixes are automatically passed to workflow execution.
+Notes about environment variables and the dev server
+
+- The development server loads `.env` files server-side using Vite's `loadEnv` so server-only keys (like `OPENAI_API_KEY`) are available to runtime execution on the server.
+- The UI fetches a masked view of selected env keys from `/api/env-vars` for display in Settings. Only masked values are shown in the client.
+- Recommended prefixes: `OPENAI_` for LLM keys, `VITE_` for client-visible config. Server-side runtime will also read `OPENAI_` and `TINYFLOW_` keys.
 
 ### CLI Usage
 

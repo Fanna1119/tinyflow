@@ -30,31 +30,6 @@ docker-compose up -d             # Docker
 
 ---
 
-## 🔐 Credentials Management
-
-```typescript
-import { getCredentialStore } from "tinyflow/credentials";
-
-const store = getCredentialStore();
-
-// Store encrypted credential
-store.set({
-  id: "api-key",
-  name: "My API Key",
-  type: "api-key",
-  data: { apiKey: "secret-123", endpoint: "https://api.example.com" },
-});
-
-// Retrieve (auto-decrypted)
-const cred = store.get("api-key");
-const apiKey = store.getValue("api-key", "apiKey");
-
-// List (no secrets)
-const list = store.list(); // [{ id, name, type }]
-```
-
----
-
 ## 🪝 Webhook Triggers
 
 ```json
@@ -285,15 +260,11 @@ await buildBundle({
   emitDocker: true,
 });
 
-// 2. Store credentials
-const store = getCredentialStore();
-store.set({ id: "api", data: { key: process.env.API_KEY } });
-
-// 3. Add retry logic to HTTP nodes
+// 2. Add retry logic to HTTP nodes
 const apiCall = async () => fetch("...");
 const result = await withRetry(apiCall, RETRY_POLICIES.aggressive);
 
-// 4. Deploy
+// 3. Deploy
 // bun server.js or docker-compose up
 ```
 

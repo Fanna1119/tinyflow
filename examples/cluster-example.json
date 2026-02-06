@@ -1,0 +1,128 @@
+{
+  "id": "cluster-demo",
+  "name": "Cluster Node Demo",
+  "description": "Demonstrates cluster root nodes with multiple sub-nodes for parallel processing",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "message": "Starting cluster demo workflow"
+      },
+      "position": { "x": 100, "y": 100 },
+      "label": "Start"
+    },
+    {
+      "id": "data-router",
+      "functionId": "core.log",
+      "params": {
+        "message": "Routing data to sub-processes"
+      },
+      "position": { "x": 350, "y": 100 },
+      "label": "Data Router",
+      "nodeType": "clusterRoot",
+      "handles": [
+        { "id": "a", "type": "source", "label": "Process A" },
+        { "id": "b", "type": "source", "label": "Process B" },
+        { "id": "c", "type": "source", "label": "Process C" }
+      ]
+    },
+    {
+      "id": "sub-process-a",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "resultA",
+        "value": "Processed by path A"
+      },
+      "position": { "x": 200, "y": 300 },
+      "label": "Process A",
+      "nodeType": "subNode",
+      "parentId": "data-router"
+    },
+    {
+      "id": "sub-process-b",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "resultB",
+        "value": "Processed by path B"
+      },
+      "position": { "x": 350, "y": 300 },
+      "label": "Process B",
+      "nodeType": "subNode",
+      "parentId": "data-router"
+    },
+    {
+      "id": "sub-process-c",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "resultC",
+        "value": "Processed by path C"
+      },
+      "position": { "x": 500, "y": 300 },
+      "label": "Process C",
+      "nodeType": "subNode",
+      "parentId": "data-router"
+    },
+    {
+      "id": "aggregate",
+      "functionId": "core.log",
+      "params": {
+        "message": "Aggregating results from all sub-processes"
+      },
+      "position": { "x": 600, "y": 100 },
+      "label": "Aggregate Results"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "finalResult"
+      },
+      "position": { "x": 800, "y": 100 },
+      "label": "End"
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "data-router",
+      "action": "default"
+    },
+    {
+      "from": "data-router",
+      "to": "sub-process-a",
+      "action": "default",
+      "sourceHandle": "a",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "data-router",
+      "to": "sub-process-b",
+      "action": "default",
+      "sourceHandle": "b",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "data-router",
+      "to": "sub-process-c",
+      "action": "default",
+      "sourceHandle": "c",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "data-router",
+      "to": "aggregate",
+      "action": "default"
+    },
+    {
+      "from": "aggregate",
+      "to": "end",
+      "action": "default"
+    }
+  ],
+  "flow": {
+    "startNodeId": "start",
+    "envs": {}
+  }
+}

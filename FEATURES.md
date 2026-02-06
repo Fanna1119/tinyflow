@@ -62,80 +62,6 @@ curl -X POST http://localhost:3000/run \
 
 ---
 
-## Credentials & Secrets Management
-
-Securely store and manage credentials for workflow integrations.
-
-### Store Credentials
-
-```typescript
-import { getCredentialStore } from "tinyflow/credentials";
-
-const credStore = getCredentialStore({
-  encryptionKey: process.env.TINYFLOW_ENCRYPTION_KEY,
-});
-
-// Store API credential
-credStore.set({
-  id: "openai-api",
-  name: "OpenAI API Key",
-  type: "api-key",
-  data: {
-    apiKey: "sk-...",
-    organization: "org-...",
-  },
-});
-
-// Store OAuth credential
-credStore.set({
-  id: "github-oauth",
-  name: "GitHub OAuth",
-  type: "oauth2",
-  data: {
-    accessToken: "gho_...",
-    refreshToken: "ghr_...",
-    expiresAt: Date.now() + 3600000,
-  },
-});
-```
-
-### Use Credentials in Workflows
-
-```typescript
-import { Runtime } from "tinyflow/runtime";
-import { getCredentialStore } from "tinyflow/credentials";
-
-const credStore = getCredentialStore();
-
-// Register custom function that uses credentials
-registerFunction(
-  {
-    id: "api.call-with-creds",
-    // ...
-  },
-  async (params, ctx) => {
-    const apiKey = credStore.getValue("openai-api", "apiKey");
-
-    const response = await fetch("https://api.openai.com/v1/...", {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-    });
-
-    // ...
-  },
-);
-```
-
-### List Credentials (without secrets)
-
-```typescript
-const credentials = credStore.list();
-// Returns: [{ id: 'openai-api', name: 'OpenAI API Key', type: 'api-key' }, ...]
-```
-
----
-
 ## Webhook Triggers
 
 Receive HTTP webhooks and start workflows with incoming data.
@@ -339,6 +265,114 @@ console.log(`Cleaned up ${deleted} old executions`);
 
 ---
 
+## Cluster Nodes (Parallel Sub-Node Execution)
+
+Execute multiple nodes in parallel as children of a cluster root node. Useful for parallel API calls, fan-out patterns, and scatter-gather operations.
+
+### Visual Structure
+
+In the visual editor, cluster nodes appear as:
+
+- **Cluster Root** - A node with a bottom handle that connects to sub-nodes
+- **Sub-Nodes** - Nodes positioned below the cluster root, connected via the bottom handle
+
+### Workflow JSON Structure
+
+```json
+{
+  "nodes": [
+    {
+      "id": "parallel-cluster",
+      "functionId": "core.log",
+      "params": { "message": "Starting parallel operations" },
+      "position": { "x": 100, "y": 0 },
+      "nodeType": "clusterRoot",
+      "handles": [
+        { "id": "right", "type": "source", "position": "right" },
+        { "id": "bottom", "type": "source", "position": "bottom" },
+        { "id": "left", "type": "target", "position": "left" }
+      ]
+    },
+    {
+      "id": "sub-api1",
+      "functionId": "http.request",
+      "params": { "url": "https://api1.example.com" },
+      "position": { "x": 50, "y": 100 },
+      "nodeType": "subNode",
+      "parentId": "parallel-cluster",
+      "handles": [{ "id": "top", "type": "target", "position": "top" }]
+    },
+    {
+      "id": "sub-api2",
+      "functionId": "http.request",
+      "params": { "url": "https://api2.example.com" },
+      "position": { "x": 150, "y": 100 },
+      "nodeType": "subNode",
+      "parentId": "parallel-cluster",
+      "handles": [{ "id": "top", "type": "target", "position": "top" }]
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "parallel-cluster", "action": "default" },
+    {
+      "from": "parallel-cluster",
+      "to": "sub-api1",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "parallel-cluster",
+      "to": "sub-api2",
+      "action": "default",
+      "edgeType": "subnode"
+    },
+    { "from": "parallel-cluster", "to": "next-node", "action": "default" }
+  ]
+}
+```
+
+### Execution Behavior
+
+1. **Cluster root executes first** - The cluster root node's function runs
+2. **If successful, sub-nodes run in parallel** - All sub-nodes execute concurrently via `Promise.all()`
+3. **Results are collected** - Sub-node outputs are stored in the shared store
+4. **Flow continues** - Execution proceeds to the next node via the cluster root's "default" edge
+
+### Accessing Sub-Node Outputs
+
+```typescript
+import { getClusterOutputs, getAllClusterOutputs } from "tinyflow/compiler";
+
+// In a downstream node or after execution
+const clusterOutputs = getClusterOutputs(store, "parallel-cluster");
+// Returns: { "sub-api1": {...}, "sub-api2": {...} }
+
+// Or get all cluster outputs
+const allOutputs = getAllClusterOutputs(store);
+// Returns: { "parallel-cluster": { "sub-api1": {...}, "sub-api2": {...} } }
+
+// Legacy format (also available)
+const legacyOutputs = store.data.get("_subNodeOutputs");
+// Returns: { "sub-api1": {...}, "sub-api2": {...} }
+```
+
+### Validation Rules
+
+The compiler validates:
+
+- Sub-nodes must have a `parentId` property
+- `parentId` must reference an existing `clusterRoot` node
+- Sub-node edges (`edgeType: "subnode"`) must originate from a `clusterRoot`
+- Sub-node edges must target a `subNode`
+
+### Error Handling
+
+- If the cluster root fails, sub-nodes are **not** executed
+- If any sub-node fails, the error is recorded but other sub-nodes complete
+- The first sub-node failure is stored in `shared.lastError`
+
+---
+
 ## Testing Harness
 
 Utilities for testing workflows with assertions and mocks.
@@ -487,26 +521,18 @@ const duration = log.getNodeDuration("my-node");
 ```typescript
 import { buildBundle } from "tinyflow/bundle";
 import { Runtime } from "tinyflow/runtime";
-import { getCredentialStore } from "tinyflow/credentials";
 import { withRetry, RETRY_POLICIES } from "tinyflow/runtime";
 import { testWorkflow } from "tinyflow/testing";
 
-// 1. Setup credentials
-const credStore = getCredentialStore();
-credStore.set({
-  id: "api-key",
-  name: "API Key",
-  type: "api-key",
-  data: { key: process.env.API_KEY },
-});
-
-// 2. Define workflow with webhook trigger
+// 1. Define workflow with webhook trigger
 const workflow = {
   flow: {
     id: "production-workflow",
     name: "Production Workflow",
     startNodeId: "webhook",
-    envs: {},
+    envs: {
+      API_KEY: "${API_KEY}", // Use environment variables for secrets
+    },
   },
   nodes: [
     {
@@ -522,7 +548,7 @@ const workflow = {
   ],
 };
 
-// 3. Test workflow
+// 2. Test workflow
 const testResult = await testWorkflow(workflow, {
   initialData: { __webhook_payload: { test: "data" } },
   expectedSuccess: true,
@@ -533,7 +559,7 @@ if (!testResult.passed) {
   throw new Error(`Tests failed: ${testResult.failures.join(", ")}`);
 }
 
-// 4. Build production bundle
+// 3. Build production bundle
 const bundle = await buildBundle({
   workflow,
   format: "esm",
@@ -544,12 +570,12 @@ const bundle = await buildBundle({
   minify: true,
 });
 
-// 5. Write files
+// 4. Write files
 for (const [filename, content] of Object.entries(bundle.files || {})) {
   await Bun.write(filename, content);
 }
 
-// 6. Deploy with Docker
+// 5. Deploy with Docker
 // docker-compose up -d
 
 console.log("✓ Production bundle generated and ready to deploy!");

@@ -1,0 +1,275 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tinyflow.dev/workflow.schema.json",
+  "title": "TinyFlow Workflow",
+  "description": "A workflow definition for TinyFlow execution",
+  "type": "object",
+  "required": ["id", "name", "version", "nodes", "edges", "flow"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to this schema file"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique workflow identifier"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable workflow name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional workflow description"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version string (e.g., 1.0.0)"
+    },
+    "nodes": {
+      "type": "array",
+      "description": "Array of workflow nodes",
+      "items": {
+        "$ref": "#/definitions/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Array of connections between nodes",
+      "items": {
+        "$ref": "#/definitions/edge"
+      }
+    },
+    "flow": {
+      "$ref": "#/definitions/flow"
+    },
+    "metadata": {
+      "$ref": "#/definitions/metadata"
+    }
+  },
+  "definitions": {
+    "node": {
+      "type": "object",
+      "required": ["id", "functionId", "params", "position"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique node identifier within the workflow"
+        },
+        "functionId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Registry function ID (e.g., core.start, http.get)"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Parameters passed to the function"
+        },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Runtime configuration for the node",
+          "properties": {
+            "maxRetries": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Maximum number of retry attempts"
+            },
+            "timeout": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Timeout in milliseconds"
+            },
+            "retryDelay": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Delay between retries in milliseconds"
+            }
+          }
+        },
+        "envs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Node-specific environment variables"
+        },
+        "position": {
+          "type": "object",
+          "required": ["x", "y"],
+          "additionalProperties": false,
+          "description": "Visual position on the canvas",
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            }
+          }
+        },
+        "label": {
+          "type": "string",
+          "description": "Display label for the node"
+        },
+        "nodeType": {
+          "type": "string",
+          "enum": ["default", "clusterRoot", "subNode"],
+          "description": "Type of node - default for regular nodes, clusterRoot for parallel execution coordinators, subNode for cluster children"
+        },
+        "handles": {
+          "type": "array",
+          "description": "Custom handles for cluster root nodes to connect sub-nodes",
+          "items": {
+            "$ref": "#/definitions/handle"
+          }
+        },
+        "parentId": {
+          "type": "string",
+          "description": "Parent cluster root node ID (required for subNode type)"
+        }
+      }
+    },
+    "handle": {
+      "type": "object",
+      "required": ["id", "type"],
+      "additionalProperties": false,
+      "description": "Connection point on a node",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique handle identifier"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["source", "target"],
+          "description": "Handle type - source for outgoing, target for incoming"
+        },
+        "label": {
+          "type": "string",
+          "description": "Display label for the handle"
+        },
+        "position": {
+          "type": "string",
+          "enum": ["top", "bottom", "left", "right"],
+          "description": "Position of the handle on the node"
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to", "action"],
+      "additionalProperties": false,
+      "description": "Connection between two nodes",
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source node ID"
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target node ID"
+        },
+        "action": {
+          "type": "string",
+          "enum": ["default", "success", "error", "condition", "next", "complete"],
+          "description": "Action that triggers this edge"
+        },
+        "condition": {
+          "type": "string",
+          "description": "Condition expression for conditional edges"
+        },
+        "sourceHandle": {
+          "type": "string",
+          "description": "ID of the source handle (for cluster connections)"
+        },
+        "targetHandle": {
+          "type": "string",
+          "description": "ID of the target handle"
+        },
+        "edgeType": {
+          "type": "string",
+          "enum": ["default", "subnode"],
+          "description": "Edge type - subnode for cluster-to-subnode connections"
+        }
+      }
+    },
+    "flow": {
+      "type": "object",
+      "required": ["startNodeId"],
+      "additionalProperties": false,
+      "description": "Flow execution configuration",
+      "properties": {
+        "startNodeId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "ID of the first node to execute"
+        },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Global runtime configuration",
+          "properties": {
+            "maxRetries": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "timeout": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "retryDelay": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "envs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Global environment variables"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Workflow metadata",
+      "properties": {
+        "author": {
+          "type": "string",
+          "description": "Workflow author"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tags for categorization"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "id": "parallel-post-enrichment",
+  "name": "Parallel Post Enrichment",
+  "description": "Processes posts in parallel",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "input": {"postIds": [1, 2, 3]}
+      },
+      "position": { "x": 100, "y": 100 }
+    },
+    {
+      "id": "log-processing",
+      "functionId": "core.log",
+      "params": {
+        "message": "Processing posts in parallel"
+      },
+      "position": { "x": 300, "y": 100 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "input"
+      },
+      "position": { "x": 500, "y": 100 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "log-processing", "action": "default" },
+    { "from": "log-processing", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "$schema": "./workflow.schema.json",
+  "id": "parallel-api-calls",
+  "name": "Parallel API Calls",
+  "version": "1.0.0",
+  "description": "Demo of cluster nodes executing multiple API calls in parallel",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {},
+      "position": { "x": 100, "y": 50 }
+    },
+    {
+      "id": "parallel-cluster",
+      "functionId": "core.log",
+      "params": { "message": "Starting parallel API calls" },
+      "position": { "x": 300, "y": 50 },
+      "nodeType": "clusterRoot",
+      "handles": [
+        { "id": "right", "type": "source", "position": "right" },
+        { "id": "bottom", "type": "source", "position": "bottom" },
+        { "id": "left", "type": "target", "position": "left" }
+      ]
+    },
+    {
+      "id": "fetch-users",
+      "functionId": "http.request",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/users/1",
+        "method": "GET",
+        "outputKey": "user"
+      },
+      "position": { "x": 200, "y": 200 },
+      "nodeType": "subNode",
+      "parentId": "parallel-cluster",
+      "handles": [
+        { "id": "top", "type": "target", "position": "top" }
+      ]
+    },
+    {
+      "id": "fetch-posts",
+      "functionId": "http.request",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/1",
+        "method": "GET",
+        "outputKey": "post"
+      },
+      "position": { "x": 350, "y": 200 },
+      "nodeType": "subNode",
+      "parentId": "parallel-cluster",
+      "handles": [
+        { "id": "top", "type": "target", "position": "top" }
+      ]
+    },
+    {
+      "id": "fetch-comments",
+      "functionId": "http.request",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/comments/1",
+        "method": "GET",
+        "outputKey": "comment"
+      },
+      "position": { "x": 500, "y": 200 },
+      "nodeType": "subNode",
+      "parentId": "parallel-cluster",
+      "handles": [
+        { "id": "top", "type": "target", "position": "top" }
+      ]
+    },
+    {
+      "id": "combine-results",
+      "functionId": "core.log",
+      "params": { "message": "All API calls completed - results in _subNodeOutputs" },
+      "position": { "x": 550, "y": 50 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {},
+      "position": { "x": 750, "y": 50 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "parallel-cluster", "action": "default" },
+    { "from": "parallel-cluster", "to": "fetch-users", "action": "default", "edgeType": "subnode" },
+    { "from": "parallel-cluster", "to": "fetch-posts", "action": "default", "edgeType": "subnode" },
+    { "from": "parallel-cluster", "to": "fetch-comments", "action": "default", "edgeType": "subnode" },
+    { "from": "parallel-cluster", "to": "combine-results", "action": "default" },
+    { "from": "combine-results", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  }
+}

@@ -62,7 +62,7 @@
         ],
         "outputKey": "category",
         "systemPrompt": "Classify this support ticket into the most appropriate category based on the content.",
-        "simulate": false
+        "simulate": true
       },
       "position": {
         "x": 850,
@@ -110,7 +110,7 @@
         "model": "gpt-4o-mini",
         "systemPrompt": "You are a friendly and professional customer support agent. Keep responses concise but helpful.",
         "temperature": 0.7,
-        "simulate": false
+        "simulate": true
       },
       "position": {
         "x": 1600,

@@ -1,0 +1,78 @@
+{
+  "id": "pattern-structured-output",
+  "name": "Structured Output Pattern",
+  "description": "Formats LLM outputs into consistent structured data. Demonstrates the Structured Output pattern from PocketFlow.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "input": {
+          "text": "John Smith is a 35-year-old software engineer from San Francisco. He has 10 years of experience and works at TechCorp."
+        }
+      },
+      "position": { "x": 100, "y": 200 }
+    },
+    {
+      "id": "extract-entities",
+      "functionId": "llm.chat",
+      "params": {
+        "systemPrompt": "Extract structured data. Return ONLY valid JSON.",
+        "promptKey": "text",
+        "outputKey": "rawJson",
+        "simulate": true
+      },
+      "position": { "x": 350, "y": 200 }
+    },
+    {
+      "id": "parse-json",
+      "functionId": "transform.jsonParse",
+      "params": {
+        "inputKey": "rawJson",
+        "outputKey": "structuredData"
+      },
+      "position": { "x": 550, "y": 200 }
+    },
+    {
+      "id": "validate-schema",
+      "functionId": "control.condition",
+      "params": {
+        "leftKey": "structuredData",
+        "operator": "truthy"
+      },
+      "position": { "x": 750, "y": 200 }
+    },
+    {
+      "id": "format-output",
+      "functionId": "transform.template",
+      "params": {
+        "template": "Extracted: {{structuredData.name}} ({{structuredData.age}}) - {{structuredData.occupation}} at {{structuredData.company}}",
+        "outputKey": "formattedOutput"
+      },
+      "position": { "x": 950, "y": 150 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "formattedOutput"
+      },
+      "position": { "x": 1150, "y": 200 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "extract-entities", "action": "default" },
+    { "from": "extract-entities", "to": "parse-json", "action": "default" },
+    { "from": "parse-json", "to": "validate-schema", "action": "default" },
+    { "from": "validate-schema", "to": "format-output", "action": "success" },
+    { "from": "format-output", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "pattern": "structured-output",
+    "description": "Converts unstructured LLM output to structured data"
+  }
+}

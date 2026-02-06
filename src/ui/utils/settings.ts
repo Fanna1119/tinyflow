@@ -32,22 +32,11 @@ export interface RuntimeSettings {
   defaultTimeout: number;
 }
 
-export interface CredentialReference {
-  /** Credential ID */
-  id: string;
-  /** Credential name */
-  name: string;
-  /** Credential type */
-  type: string;
-}
-
 export interface TinyFlowSettings {
   /** Editor preferences */
   editor: EditorSettings;
   /** Runtime preferences */
   runtime: RuntimeSettings;
-  /** Credential references (IDs only, not secrets) */
-  credentials: CredentialReference[];
   /** Settings file version */
   version: number;
 }
@@ -70,7 +59,6 @@ export const DEFAULT_SETTINGS: TinyFlowSettings = {
     stepThroughDefault: false,
     defaultTimeout: 30000,
   },
-  credentials: [],
   version: 1,
 };
 

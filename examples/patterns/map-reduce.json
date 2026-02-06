@@ -1,0 +1,71 @@
+{
+  "id": "pattern-map-reduce",
+  "name": "Map-Reduce Pattern",
+  "description": "Splits data into chunks, processes each in parallel (Map), then combines results (Reduce). Demonstrates the Map-Reduce pattern from PocketFlow.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "input": {
+          "documents": [
+            "The quick brown fox jumps over the lazy dog",
+            "Pack my box with five dozen liquor jugs",
+            "How vexingly quick daft zebras jump",
+            "The five boxing wizards jump quickly"
+          ]
+        }
+      },
+      "position": { "x": 100, "y": 200 }
+    },
+    {
+      "id": "map-summarize",
+      "functionId": "control.parallel",
+      "params": {
+        "array": [
+          "The quick brown fox jumps over the lazy dog",
+          "Pack my box with five dozen liquor jugs",
+          "How vexingly quick daft zebras jump",
+          "The five boxing wizards jump quickly"
+        ],
+        "processorFunction": "transform.template",
+        "processorParams": {
+          "template": "Summary of: {{currentItem}}",
+          "outputKey": "_temp"
+        },
+        "outputKey": "summaries"
+      },
+      "position": { "x": 350, "y": 200 }
+    },
+    {
+      "id": "reduce-combine",
+      "functionId": "transform.jsonStringify",
+      "params": {
+        "inputKey": "summaries",
+        "outputKey": "combinedResult"
+      },
+      "position": { "x": 600, "y": 200 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "combinedResult"
+      },
+      "position": { "x": 850, "y": 200 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "map-summarize", "action": "default" },
+    { "from": "map-summarize", "to": "reduce-combine", "action": "default" },
+    { "from": "reduce-combine", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "pattern": "map-reduce",
+    "description": "Parallel processing with result aggregation"
+  }
+}

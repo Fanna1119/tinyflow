@@ -34,3 +34,10 @@ html, body, #root {
 .dark .react-flow__minimap {
   background-color: #1f2937;
 }
+
+/* SubNode edge animation */
+@keyframes dashmove {
+  to {
+    stroke-dashoffset: -12;
+  }
+}

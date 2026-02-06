@@ -250,6 +250,11 @@ registerFunction(
       "Receives HTTP webhook data and initializes the workflow with it.",
     category: "HTTP",
     params: [
+      param("url", "string", {
+        required: false,
+        default: "/",
+        description: "Webhook URL path to listen on",
+      }),
       param("outputKey", "string", {
         required: true,
         description: "Key to store webhook payload",
@@ -273,6 +278,7 @@ registerFunction(
     icon: "Webhook",
   },
   async (params, context) => {
+    const url = (params.url as string) ?? "/";
     const outputKey = params.outputKey as string;
     const method = (params.method as string) ?? "POST";
     const validateSecret = (params.validateSecret as boolean) ?? false;
@@ -283,7 +289,7 @@ registerFunction(
     const webhookPayload = context.store.get("__webhook_payload") ?? {};
 
     context.log(
-      `Webhook trigger activated (method: ${method}, validate: ${validateSecret})`,
+      `Webhook trigger activated for ${method} ${url} (validate: ${validateSecret})`,
     );
 
     // Validate secret if required

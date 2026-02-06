@@ -31,41 +31,7 @@ cd dist && bun server.js
 
 ---
 
-### 2. Credentials & Secrets Management
-
-**Files Created:**
-
-- `src/credentials/store.ts` - AES-256 encrypted credential store
-- `src/credentials/index.ts` - Module exports
-- `src/credentials/__tests__/store.test.ts` - Comprehensive tests
-
-**Key Features:**
-
-- AES-256-CBC encryption for sensitive data
-- In-memory storage with pluggable backend support
-- CRUD operations (set, get, delete, list)
-- Environment-based encryption key
-- Type-safe credential definitions
-
-**Tests:** ✅ All tests passing (7/7)
-
-**API:**
-
-```typescript
-const store = getCredentialStore();
-store.set({
-  id: "api-key",
-  name: "API",
-  type: "api-key",
-  data: { key: "secret" },
-});
-const cred = store.get("api-key");
-const value = store.getValue("api-key", "key");
-```
-
----
-
-### 3. Webhook Trigger Node
+### 2. Webhook Trigger Node
 
 **Files Modified:**
 
@@ -95,7 +61,7 @@ const value = store.getValue("api-key", "key");
 
 ---
 
-### 4. Retry Policies & Error Handling
+### 3. Retry Policies & Error Handling
 
 **Files Created:**
 
@@ -126,7 +92,7 @@ const result = await withRetry(
 
 ---
 
-### 5. Durable Execution & Persistence
+### 4. Durable Execution & Persistence
 
 **Files Created:**
 
@@ -158,7 +124,7 @@ interface PersistenceAdapter {
 
 ---
 
-### 6. Testing Harness
+### 5. Testing Harness
 
 **Files Created:**
 
@@ -190,7 +156,7 @@ const result = await testWorkflow(workflow, {
 
 ---
 
-### 7. Enhanced Debug UI
+### 6. Enhanced Debug UI
 
 **Files Created:**
 

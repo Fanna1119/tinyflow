@@ -4,10 +4,25 @@
  */
 
 import { useState } from "react";
-import { X, AlertTriangle, Settings, Code, FlaskConical } from "lucide-react";
-import { registry } from "../../registry";
-import type { FunctionParameter } from "../../schema/types";
-import type { MockValue } from "../../compiler";
+import {
+  X,
+  AlertTriangle,
+  Settings,
+  Code,
+  FlaskConical,
+  Layers,
+  Plus,
+  Trash2,
+} from "lucide-react";
+import { registry } from "../../../registry";
+import type {
+  FunctionParameter,
+  NodeType,
+  NodeHandle,
+} from "../../../schema/types";
+import type { MockValue } from "../../../compiler";
+import { KeySuggestionInput } from "../dataflow/KeySuggestionInput";
+import { isKeyParam, type NodeDataFlow } from "../../hooks/useDataFlowAnalysis";
 
 interface NodeConfigPanelProps {
   nodeId: string;
@@ -23,6 +38,22 @@ interface NodeConfigPanelProps {
   testValue?: MockValue;
   /** Callback to update test value */
   onUpdateTestValue?: (value: MockValue | null) => void;
+  /** Current node type (default, clusterRoot, subNode) */
+  nodeType?: NodeType;
+  /** Current handles for cluster root nodes */
+  handles?: NodeHandle[];
+  /** Convert node to cluster root */
+  onConvertToClusterRoot?: () => void;
+  /** Convert cluster root back to regular node */
+  onConvertToRegularNode?: () => void;
+  /** Add a handle to cluster root */
+  onAddHandle?: (label?: string) => void;
+  /** Remove a handle from cluster root */
+  onRemoveHandle?: (handleId: string) => void;
+  /** Rename a handle */
+  onRenameHandle?: (handleId: string, newLabel: string) => void;
+  /** Data flow analysis for this node */
+  dataFlow?: NodeDataFlow;
 }
 
 type TabType = "params" | "test";
@@ -39,8 +70,18 @@ export function NodeConfigPanel({
   onDelete,
   testValue,
   onUpdateTestValue,
+  nodeType,
+  handles,
+  onConvertToClusterRoot,
+  onConvertToRegularNode,
+  onAddHandle,
+  onRemoveHandle,
+  onRenameHandle,
+  dataFlow,
 }: NodeConfigPanelProps) {
   const metadata = registry.get(functionId)?.metadata;
+  const [editingHandleId, setEditingHandleId] = useState<string | null>(null);
+  const [editingHandleLabel, setEditingHandleLabel] = useState("");
   const [localParams, setLocalParams] = useState(params);
   const [localLabel, setLocalLabel] = useState(label);
   const [jsonMode, setJsonMode] = useState(false);
@@ -260,6 +301,141 @@ export function NodeConfigPanel({
               )}
             </div>
 
+            {/* Cluster Controls */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Layers className="w-4 h-4 text-purple-500" />
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Cluster Node
+                </label>
+              </div>
+
+              {nodeType === "clusterRoot" ? (
+                <div className="space-y-3">
+                  <div className="text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 px-2 py-1.5 rounded">
+                    This is a Cluster Root with {handles?.length ?? 0} sub-node
+                    handles
+                  </div>
+
+                  {/* Handle list */}
+                  {handles && handles.length > 0 && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                        Sub-node Handles
+                      </label>
+                      {handles.map((handle, index) => (
+                        <div
+                          key={handle.id}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <div
+                            className="w-3 h-3 rounded-full shrink-0"
+                            style={{
+                              backgroundColor: [
+                                "#a855f7",
+                                "#22c55e",
+                                "#3b82f6",
+                                "#f59e0b",
+                                "#ef4444",
+                              ][index % 5],
+                            }}
+                          />
+                          {editingHandleId === handle.id ? (
+                            <input
+                              type="text"
+                              value={editingHandleLabel}
+                              onChange={(e) =>
+                                setEditingHandleLabel(e.target.value)
+                              }
+                              onBlur={() => {
+                                if (editingHandleLabel.trim()) {
+                                  onRenameHandle?.(
+                                    handle.id,
+                                    editingHandleLabel.trim(),
+                                  );
+                                }
+                                setEditingHandleId(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  if (editingHandleLabel.trim()) {
+                                    onRenameHandle?.(
+                                      handle.id,
+                                      editingHandleLabel.trim(),
+                                    );
+                                  }
+                                  setEditingHandleId(null);
+                                } else if (e.key === "Escape") {
+                                  setEditingHandleId(null);
+                                }
+                              }}
+                              className="flex-1 min-w-0 px-1.5 py-0.5 text-sm font-mono bg-white dark:bg-gray-800 border border-purple-300 dark:border-purple-600 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                              autoFocus
+                            />
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setEditingHandleId(handle.id);
+                                setEditingHandleLabel(
+                                  handle.label ?? handle.id,
+                                );
+                              }}
+                              className="flex-1 min-w-0 text-left font-mono text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 truncate"
+                              title="Click to rename"
+                            >
+                              {handle.label ?? handle.id}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => onRemoveHandle?.(handle.id)}
+                            className="shrink-0 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                            title="Remove handle"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add handle button */}
+                  <button
+                    onClick={() => onAddHandle?.()}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Handle
+                  </button>
+
+                  {/* Convert back to regular */}
+                  <button
+                    onClick={onConvertToRegularNode}
+                    className="w-full px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  >
+                    Convert to Regular Node
+                  </button>
+                </div>
+              ) : nodeType === "subNode" ? (
+                <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1.5 rounded">
+                  This is a Sub-Node (connected to a cluster root)
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Convert this node to a cluster root to add parallel
+                    sub-nodes.
+                  </p>
+                  <button
+                    onClick={onConvertToClusterRoot}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg transition-colors"
+                  >
+                    <Layers className="w-4 h-4" />
+                    Convert to Cluster Root
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Parameters */}
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -296,12 +472,34 @@ export function NodeConfigPanel({
                 </div>
               ) : (
                 <div className="space-y-3">
+                  {/* Upstream data context hint */}
+                  {dataFlow && dataFlow.availableKeys.length > 0 && (
+                    <div className="px-2 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        Available upstream data
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {dataFlow.availableKeys.map((pk) => (
+                          <span
+                            key={`${pk.key}-${pk.sourceNodeId}`}
+                            className="inline-block px-1.5 py-0.5 text-[10px] font-mono rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                            title={`from ${pk.sourceLabel} (${pk.sourceFunctionId})`}
+                          >
+                            {pk.key}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {metadata?.params.map((param) => (
                     <ParameterInput
                       key={param.name}
                       param={param}
                       value={localParams[param.name]}
                       onChange={(value) => handleParamChange(param.name, value)}
+                      functionId={functionId}
+                      dataFlow={dataFlow}
                     />
                   ))}
                   {(!metadata || metadata.params.length === 0) && (
@@ -494,12 +692,39 @@ interface ParameterInputProps {
   param: FunctionParameter;
   value: unknown;
   onChange: (value: unknown) => void;
+  functionId: string;
+  dataFlow?: NodeDataFlow;
 }
 
-function ParameterInput({ param, value, onChange }: ParameterInputProps) {
+function ParameterInput({
+  param,
+  value,
+  onChange,
+  functionId,
+  dataFlow,
+}: ParameterInputProps) {
   const id = `param-${param.name}`;
+  const keyDirection = isKeyParam(param, functionId);
 
   const renderInput = () => {
+    // Use KeySuggestionInput for key-referencing params
+    if (keyDirection && dataFlow) {
+      return (
+        <KeySuggestionInput
+          id={id}
+          value={String(value ?? param.default ?? "")}
+          onChange={(v) => onChange(v)}
+          availableKeys={dataFlow.availableKeys}
+          direction={keyDirection}
+          placeholder={
+            keyDirection === "input"
+              ? "Select upstream key…"
+              : "Name for this output…"
+          }
+        />
+      );
+    }
+
     switch (param.type) {
       case "boolean":
         return (

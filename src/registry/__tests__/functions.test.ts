@@ -279,6 +279,91 @@ describe("control functions", () => {
       expect(result.action).toBe("handleDefault");
     });
   });
+
+  describe("control.batchForEach", () => {
+    it("should process array items in parallel", async () => {
+      const { registry, registerFunction } = await import("../index");
+
+      // Mock a simple processor function that doubles numbers
+      const mockProcessor = vi.fn(async (params, context) => {
+        const item = params.currentItem as number;
+        context.store.set("doubled", item * 2);
+        return { success: true, output: item * 2 };
+      });
+
+      // Register the mock processor
+      registerFunction(
+        {
+          id: "test.double",
+          name: "Double",
+          description: "Doubles a number",
+          category: "Test",
+          params: [],
+          outputs: [],
+          icon: "Calculator",
+        },
+        mockProcessor,
+      );
+
+      const fn = registry.get("control.batchForEach");
+      expect(fn).toBeDefined();
+
+      const ctx = createMockContext();
+
+      const result = await fn!.execute(
+        {
+          array: [1, 2, 3, 4, 5],
+          processorFunction: "test.double",
+          outputKey: "results",
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.output).toEqual([2, 4, 6, 8, 10]);
+      expect(ctx.store.get("results")).toEqual([2, 4, 6, 8, 10]);
+      expect(mockProcessor).toHaveBeenCalledTimes(5);
+    });
+
+    it("should handle empty array", async () => {
+      const { registry } = await import("../index");
+      const fn = registry.get("control.batchForEach");
+
+      const ctx = createMockContext();
+
+      const result = await fn!.execute(
+        {
+          array: [],
+          processorFunction: "test.double",
+          outputKey: "results",
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.output).toEqual([]);
+      expect(ctx.store.get("results")).toEqual([]);
+    });
+
+    it("should handle non-array input", async () => {
+      const { registry } = await import("../index");
+      const fn = registry.get("control.batchForEach");
+
+      const ctx = createMockContext();
+
+      const result = await fn!.execute(
+        {
+          array: "not an array",
+          processorFunction: "test.double",
+          outputKey: "results",
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("not an array");
+    });
+  });
 });
 
 // ============================================================================

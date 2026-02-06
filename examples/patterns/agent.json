@@ -1,0 +1,134 @@
+{
+  "id": "pattern-agent",
+  "name": "Agent Pattern",
+  "description": "Autonomous agent that makes decisions",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "input": {
+          "feedback": "The product is great but shipping was slow"
+        }
+      },
+      "position": { "x": 100, "y": 200 }
+    },
+    {
+      "id": "analyze-sentiment",
+      "functionId": "llm.chat",
+      "params": {
+        "systemPrompt": "Respond with only: POSITIVE, NEGATIVE, or MIXED",
+        "promptKey": "input.feedback",
+        "outputKey": "sentiment",
+        "simulate": true
+      },
+      "position": { "x": 300, "y": 200 }
+    },
+    {
+      "id": "store-result",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "result",
+        "value": "Feedback analyzed"
+      },
+      "position": { "x": 500, "y": 200 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "result"
+      },
+      "position": { "x": 700, "y": 200 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "analyze-sentiment", "action": "default" },
+    { "from": "analyze-sentiment", "to": "store-result", "action": "default" },
+    { "from": "store-result", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  }
+}
+    {
+      "id": "analyze-sentiment",
+      "functionId": "llm.chat",
+      "params": {
+        "systemPrompt": "You are a sentiment analyzer. Respond with only: POSITIVE, NEGATIVE, or MIXED",
+        "promptKey": "input.feedback",
+        "outputKey": "sentiment",
+        "simulate": true
+      },
+      "position": { "x": 300, "y": 200 }
+    },
+    {
+      "id": "decide-action",
+      "functionId": "control.switch",
+      "params": {
+        "key": "sentiment",
+        "cases": {
+          "POSITIVE": "thank",
+          "NEGATIVE": "escalate",
+          "MIXED": "acknowledge"
+        },
+        "default": "acknowledge"
+      },
+      "position": { "x": 500, "y": 200 }
+    },
+    {
+      "id": "thank-response",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "response",
+        "value": "Thank you for your positive feedback! We're glad you love the product."
+      },
+      "position": { "x": 700, "y": 100 }
+    },
+    {
+      "id": "escalate-response",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "response",
+        "value": "We're sorry to hear about your experience. A manager will contact you within 24 hours."
+      },
+      "position": { "x": 700, "y": 200 }
+    },
+    {
+      "id": "acknowledge-response",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "response",
+        "value": "Thank you for your feedback. We appreciate both the praise and the constructive criticism about shipping."
+      },
+      "position": { "x": 700, "y": 300 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "response"
+      },
+      "position": { "x": 900, "y": 200 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "extract-feedback", "action": "default" },
+    { "from": "extract-feedback", "to": "analyze-sentiment", "action": "default" },
+    { "from": "analyze-sentiment", "to": "decide-action", "action": "default" },
+    { "from": "decide-action", "to": "thank-response", "action": "thank" },
+    { "from": "decide-action", "to": "escalate-response", "action": "escalate" },
+    { "from": "decide-action", "to": "acknowledge-response", "action": "acknowledge" },
+    { "from": "thank-response", "to": "end", "action": "default" },
+    { "from": "escalate-response", "to": "end", "action": "default" },
+    { "from": "acknowledge-response", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "pattern": "agent",
+    "description": "Demonstrates autonomous decision-making based on analyzed input"
+  }
+}

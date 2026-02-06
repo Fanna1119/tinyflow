@@ -3,15 +3,8 @@
  * Combines React Flow with sidebar and config panel
  */
 
-import { useCallback, useRef, useState, useMemo, useEffect } from "react";
-import {
-  ReactFlow,
-  Background,
-  Controls,
-  MiniMap,
-  Panel,
-  type ReactFlowInstance,
-} from "@xyflow/react";
+import { useCallback, useState, useMemo, useEffect } from "react";
+import type { Node } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
 import { Sidebar } from "./Sidebar";
@@ -21,10 +14,11 @@ import { DebugPanel } from "./DebugPanel";
 import { SettingsModal } from "./SettingsModal";
 import { createEmptyWorkflow } from "./WorkflowTabs";
 import { BundleModal } from "./BundleModal";
-import { nodeTypes } from "./nodeTypes";
+import { FlowCanvas } from "./FlowCanvas";
 import { useFlowEditor } from "../hooks/useFlowEditor";
 import { useDebugger } from "../hooks/useDebugger";
-import { executeWorkflowOnServer } from "../utils/serverApi";
+import { useFileOperations } from "../hooks/useFileOperations";
+import { useWorkflowExecution } from "../hooks/useWorkflowExecution";
 import type { WorkflowDefinition } from "../../schema/types";
 import {
   type TinyFlowSettings,
@@ -44,20 +38,34 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
   );
   const [debugState, debugActions] = useDebugger();
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  const [isRunning, setIsRunning] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showBundleModal, setShowBundleModal] = useState(false);
-  const [lastDuration, setLastDuration] = useState<number | undefined>();
-  const [hasPendingSteps, setHasPendingSteps] = useState(false);
   const [editorSettings, setEditorSettings] =
     useState<TinyFlowSettings>(DEFAULT_SETTINGS);
-  const [fileHandle, setFileHandle] = useState<FileSystemFileHandle | null>(
-    null,
-  );
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const reactFlowInstance = useRef<ReactFlowInstance<any> | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // File operations hook
+  const fileOps = useFileOperations({
+    onImport: actions.importWorkflow,
+    onExport: actions.exportWorkflow,
+    onSave,
+    onAfterImport: () => {
+      const result = actions.validate();
+      setValidationErrors(result.errors);
+    },
+  });
+
+  // Workflow execution hook
+  const execution = useWorkflowExecution({
+    debugActions: {
+      startSession: debugActions.startSession,
+      endSession: debugActions.endSession,
+      onNodeStart: debugActions.onNodeStart,
+      onNodeComplete: debugActions.onNodeComplete,
+    },
+    stepMode: debugState.stepMode,
+    getMockValues: debugActions.getMockValues,
+  });
 
   // Load settings on mount
   useEffect(() => {
@@ -87,34 +95,9 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
     ? state.nodes.find((n) => n.id === state.selectedNodeId)
     : null;
 
-  // Handle drop from sidebar
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-  }, []);
-
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-
-      const functionId = event.dataTransfer.getData(
-        "application/tinyflow-function",
-      );
-      if (!functionId || !reactFlowInstance.current) return;
-
-      const position = reactFlowInstance.current.screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-
-      actions.addNode(functionId, position);
-    },
-    [actions],
-  );
-
   // Handle node selection
   const onNodeClick = useCallback(
-    (_: React.MouseEvent, node: { id: string }) => {
+    (_: React.MouseEvent, node: Node) => {
       actions.selectNode(node.id);
     },
     [actions],
@@ -130,295 +113,12 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
     setValidationErrors(result.errors);
   }, [actions]);
 
-  // Import using File System Access API (for save support) or fallback
-  const handleImport = useCallback(async () => {
-    // Try File System Access API first (Chrome/Edge)
-    if ("showOpenFilePicker" in window) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const [handle] = await (window as any).showOpenFilePicker({
-          types: [
-            {
-              description: "JSON files",
-              accept: { "application/json": [".json"] },
-            },
-          ],
-        });
-        const file = await handle.getFile();
-        const json = await file.text();
-        const result = actions.importWorkflow(json);
-        if (!result.success) {
-          alert(`Import failed: ${result.error}`);
-        } else {
-          if (result.warnings?.length) {
-            console.warn("Import warnings:", result.warnings);
-            // Optionally show to user
-            alert(`Imported with warnings:\n• ${result.warnings.join("\n• ")}`);
-          }
-          setFileHandle(handle); // Store handle for saving
-          handleValidate();
-        }
-      } catch (err) {
-        // User cancelled or API not supported
-        if ((err as Error).name !== "AbortError") {
-          console.error("File picker error:", err);
-        }
-      }
-    } else {
-      // Fallback to file input
-      fileInputRef.current?.click();
-    }
-  }, [actions, handleValidate]);
-
-  const handleFileChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const json = e.target?.result as string;
-        const result = actions.importWorkflow(json);
-        if (!result.success) {
-          alert(`Import failed: ${result.error}`);
-        } else {
-          if (result.warnings?.length) {
-            console.warn("Import warnings:", result.warnings);
-            alert(`Imported with warnings:\n• ${result.warnings.join("\n• ")}`);
-          }
-          setFileHandle(null); // No handle available with fallback
-          handleValidate();
-        }
-      };
-      reader.readAsText(file);
-
-      // Reset input
-      event.target.value = "";
-    },
-    [actions, handleValidate],
-  );
-
-  // Save to file (overwrites original)
-  const handleSave = useCallback(async () => {
-    const workflow = actions.exportWorkflow();
-    const json = JSON.stringify(workflow, null, 2);
-
-    if (fileHandle) {
-      // Save to the same file
-      try {
-        const writable = await fileHandle.createWritable();
-        await writable.write(json);
-        await writable.close();
-        onSave?.(workflow);
-      } catch (err) {
-        console.error("Save failed:", err);
-        alert("Save failed. Try using Export instead.");
-      }
-    } else if ("showSaveFilePicker" in window) {
-      // No existing file, prompt for save location
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: `${workflow.id}.json`,
-          types: [
-            {
-              description: "JSON files",
-              accept: { "application/json": [".json"] },
-            },
-          ],
-        });
-        const writable = await handle.createWritable();
-        await writable.write(json);
-        await writable.close();
-        setFileHandle(handle); // Store for future saves
-        onSave?.(workflow);
-      } catch (err) {
-        if ((err as Error).name !== "AbortError") {
-          console.error("Save failed:", err);
-        }
-      }
-    } else {
-      // Fallback: download
-      alert(
-        "Your browser does not support direct file saving. Use Export instead.",
-      );
-    }
-  }, [actions, fileHandle, onSave]);
-
-  // Export
-  const handleExport = useCallback(() => {
-    const workflow = actions.exportWorkflow();
-    const json = JSON.stringify(workflow, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${workflow.id}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-
-    onSave?.(workflow);
-  }, [actions, onSave]);
-
-  // Store for step-by-step playback
-  const pendingEventsRef = useRef<
-    Array<{
-      type: "start" | "complete";
-      nodeId: string;
-      params?: Record<string, unknown>;
-      success?: boolean;
-      output?: unknown;
-    }>
-  >([]);
-  const executionResultRef = useRef<{
-    success: boolean;
-    duration: number;
-  } | null>(null);
-
-  // Process next step in step mode
-  const processNextEvent = useCallback(() => {
-    if (pendingEventsRef.current.length === 0) {
-      setHasPendingSteps(false);
-      setIsRunning(false);
-      // End session with stored result
-      if (executionResultRef.current) {
-        debugActions.endSession(executionResultRef.current.success);
-        setLastDuration(executionResultRef.current.duration);
-        executionResultRef.current = null;
-      }
-      return false;
-    }
-
-    const event = pendingEventsRef.current.shift()!;
-    if (event.type === "start") {
-      debugActions.onNodeStart(event.nodeId, event.params || {});
-    } else {
-      debugActions.onNodeComplete(event.nodeId, event.success!, event.output);
-    }
-
-    // Update pending state
-    setHasPendingSteps(pendingEventsRef.current.length > 0);
-
-    // If no more events, we're done
-    if (pendingEventsRef.current.length === 0) {
-      setIsRunning(false);
-      if (executionResultRef.current) {
-        debugActions.endSession(executionResultRef.current.success);
-        setLastDuration(executionResultRef.current.duration);
-        executionResultRef.current = null;
-      }
-    }
-
-    return pendingEventsRef.current.length > 0;
-  }, [debugActions]);
-
-  // Handle step button click
-  const handleStep = useCallback(() => {
-    processNextEvent();
-  }, [processNextEvent]);
-
   // Run workflow
-  const handleRun = useCallback(async () => {
+  const handleRun = useCallback(() => {
     const workflow = actions.exportWorkflow();
-    setIsRunning(true);
-    setLastDuration(undefined);
     setShowDebugPanel(true); // Auto-open debug panel
-    setHasPendingSteps(false);
-
-    // Start debug session
-    debugActions.startSession();
-    pendingEventsRef.current = [];
-    executionResultRef.current = null;
-
-    // Convert mock values to plain object for server
-    const mockValuesObj: Record<string, unknown> = {};
-    const mockMap = debugActions.getMockValues();
-    if (mockMap) {
-      for (const [key, value] of mockMap.entries()) {
-        mockValuesObj[key] = value;
-      }
-    }
-
-    try {
-      if (debugState.stepMode) {
-        // Step mode: collect all events first, then play back one by one
-        const collectedEvents: Array<{
-          type: "start" | "complete";
-          nodeId: string;
-          params?: Record<string, unknown>;
-          success?: boolean;
-          output?: unknown;
-        }> = [];
-
-        const result = await executeWorkflowOnServer(workflow, {
-          mockValues:
-            Object.keys(mockValuesObj).length > 0 ? mockValuesObj : undefined,
-          callbacks: {
-            onNodeStart: (nodeId, params) => {
-              collectedEvents.push({ type: "start", nodeId, params });
-            },
-            onNodeComplete: (nodeId, success, output) => {
-              collectedEvents.push({
-                type: "complete",
-                nodeId,
-                success,
-                output,
-              });
-            },
-            onError: (nodeId, error) => {
-              console.error(`Error in "${nodeId}": ${error}`);
-            },
-          },
-        });
-
-        // Store events for playback and result for later
-        pendingEventsRef.current = collectedEvents;
-        executionResultRef.current = {
-          success: result.success,
-          duration: result.duration,
-        };
-
-        if (collectedEvents.length > 0) {
-          setHasPendingSteps(true);
-          // Process first event automatically
-          processNextEvent();
-        } else {
-          // No events, end immediately
-          debugActions.endSession(result.success);
-          setLastDuration(result.duration);
-          setIsRunning(false);
-        }
-      } else {
-        // Normal mode: show events in real-time
-        const result = await executeWorkflowOnServer(workflow, {
-          mockValues:
-            Object.keys(mockValuesObj).length > 0 ? mockValuesObj : undefined,
-          callbacks: {
-            onNodeStart: (nodeId, params) => {
-              debugActions.onNodeStart(nodeId, params);
-            },
-            onNodeComplete: (nodeId, success, output) => {
-              debugActions.onNodeComplete(nodeId, success, output);
-            },
-            onError: (nodeId, error) => {
-              console.error(`Error in "${nodeId}": ${error}`);
-            },
-          },
-        });
-
-        debugActions.endSession(result.success);
-        setLastDuration(result.duration);
-        setIsRunning(false);
-        console.log("Execution result:", result);
-      }
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : "Unknown error";
-      debugActions.endSession(false);
-      setIsRunning(false);
-      setHasPendingSteps(false);
-      console.error("Execution error:", errorMsg);
-    }
-  }, [actions, debugActions, debugState.stepMode, processNextEvent]);
+    execution.run(workflow);
+  }, [actions, execution]);
 
   // Clear
   const handleClear = useCallback(() => {
@@ -426,8 +126,9 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
       actions.clear();
       setValidationErrors([]);
       debugActions.reset();
+      execution.reset();
     }
-  }, [actions, debugActions]);
+  }, [actions, debugActions, execution]);
 
   // Get current workflow for bundle modal
   const currentWorkflow = useMemo(() => {
@@ -445,10 +146,10 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
     <div className="flex h-screen bg-gray-100 dark:bg-gray-950">
       {/* Hidden file input for import */}
       <input
-        ref={fileInputRef}
+        ref={fileOps.fileInputRef}
         type="file"
         accept=".json"
-        onChange={handleFileChange}
+        onChange={fileOps.handleFileChange}
         className="hidden"
       />
 
@@ -462,10 +163,10 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
           workflowName={state.workflowMeta.name}
           isDirty={state.isDirty}
           validationErrors={validationErrors}
-          onImport={handleImport}
-          onExport={handleExport}
-          onSave={handleSave}
-          canSave={fileHandle !== null || "showSaveFilePicker" in window}
+          onImport={fileOps.handleImport}
+          onExport={fileOps.handleExport}
+          onSave={fileOps.handleSave}
+          canSave={fileOps.canSave}
           onRun={handleRun}
           onClear={handleClear}
           onValidate={handleValidate}
@@ -477,7 +178,7 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
 
         {/* React Flow Canvas */}
         <div className="flex-1 relative">
-          <ReactFlow
+          <FlowCanvas
             nodes={enhancedNodes}
             edges={state.edges}
             onNodesChange={actions.onNodesChange}
@@ -485,75 +186,12 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
             onConnect={actions.onConnect}
             onNodeClick={onNodeClick}
             onPaneClick={onPaneClick}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-            onInit={(instance) => {
-              reactFlowInstance.current = instance;
-            }}
-            nodeTypes={nodeTypes}
-            fitView
-            snapToGrid={editorSettings.editor.snapToGrid}
-            snapGrid={[
-              editorSettings.editor.gridSize,
-              editorSettings.editor.gridSize,
-            ]}
-            defaultEdgeOptions={{
-              type: "smoothstep",
-              animated: false,
-            }}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background gap={editorSettings.editor.gridSize} size={1} />
-            <Controls />
-            {editorSettings.editor.showMinimap && (
-              <MiniMap
-                nodeColor={(node) =>
-                  node.type === "error" ? "#ef4444" : "#3b82f6"
-                }
-                maskColor="rgba(0, 0, 0, 0.1)"
-              />
-            )}
-
-            {/* Running indicator */}
-            {isRunning && (
-              <Panel position="top-center">
-                <div className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Running workflow...
-                </div>
-              </Panel>
-            )}
-
-            {/* Validation errors */}
-            {validationErrors.length > 0 && (
-              <Panel position="top-right">
-                <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 max-w-sm shadow-lg">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                      {validationErrors.length} issue
-                      {validationErrors.length > 1 ? "s" : ""}
-                    </span>
-                    <button
-                      onClick={() => setValidationErrors([])}
-                      className="text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200 text-xs"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                  <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-1">
-                    {validationErrors.slice(0, 5).map((err, i) => (
-                      <li key={i}>• {err}</li>
-                    ))}
-                    {validationErrors.length > 5 && (
-                      <li className="text-amber-500">
-                        ...and {validationErrors.length - 5} more
-                      </li>
-                    )}
-                  </ul>
-                </div>
-              </Panel>
-            )}
-          </ReactFlow>
+            onAddNode={actions.addNode}
+            settings={editorSettings}
+            isRunning={execution.isRunning}
+            validationErrors={validationErrors}
+            onDismissValidation={() => setValidationErrors([])}
+          />
 
           {/* Debug Panel */}
           <DebugPanel
@@ -562,8 +200,8 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
             isOpen={showDebugPanel}
             onToggle={() => setShowDebugPanel(!showDebugPanel)}
             onClear={() => debugActions.clearSteps()}
-            isRunning={isRunning}
-            duration={lastDuration}
+            isRunning={execution.isRunning}
+            duration={execution.lastDuration}
             hasTestValues={debugState.testValues.size > 0}
             enabledTestCount={
               Array.from(debugState.testValues.values()).filter(
@@ -573,8 +211,8 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
             onStepClick={(nodeId) => actions.selectNode(nodeId)}
             stepMode={debugState.stepMode}
             onToggleStepMode={debugActions.toggleStepMode}
-            isPaused={hasPendingSteps && debugState.stepMode}
-            onNextStep={handleStep}
+            isPaused={execution.hasPendingSteps && debugState.stepMode}
+            onNextStep={execution.step}
           />
         </div>
       </div>
@@ -598,6 +236,23 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
           testValue={debugState.testValues.get(selectedNode.id)}
           onUpdateTestValue={(value) =>
             debugActions.setTestValue(selectedNode.id, value)
+          }
+          nodeType={actions.getNodeType(selectedNode.id)}
+          handles={actions.getNodeHandles(selectedNode.id)}
+          onConvertToClusterRoot={() =>
+            actions.convertToClusterRoot(selectedNode.id)
+          }
+          onConvertToRegularNode={() =>
+            actions.convertToRegularNode(selectedNode.id)
+          }
+          onAddHandle={(label) =>
+            actions.addClusterHandle(selectedNode.id, label)
+          }
+          onRemoveHandle={(handleId) =>
+            actions.removeClusterHandle(selectedNode.id, handleId)
+          }
+          onRenameHandle={(handleId, newLabel) =>
+            actions.renameClusterHandle(selectedNode.id, handleId, newLabel)
           }
         />
       )}

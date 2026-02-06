@@ -1,0 +1,52 @@
+{
+  "$schema": "./workflow.schema.json",
+  "id": "foreach-cluster-example",
+  "name": "ForEach with Cluster Processing",
+  "description": "Iterates over a list of user IDs using forEach, and for each user processes multiple data sources in parallel using a cluster (profile, posts, friends).",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {},
+      "position": { "x": 0, "y": 200 },
+      "label": "Start Pipeline"
+    },
+    {
+      "id": "loop-complete",
+      "functionId": "core.log",
+      "params": {
+        "message": "Processing complete"
+      },
+      "position": { "x": 600, "y": 400 },
+      "label": "Loop Complete"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "message"
+      },
+      "position": { "x": 800, "y": 400 },
+      "label": "End Pipeline"
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "loop-complete",
+      "action": "default"
+    },
+    {
+      "from": "loop-complete",
+      "to": "end",
+      "action": "default"
+    }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "updatedAt": "2026-02-04T16:00:00.000Z"
+  }
+}

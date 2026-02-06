@@ -17,7 +17,7 @@ import {
   ChevronUp,
   CheckCircle,
 } from "lucide-react";
-import type { WorkflowDefinition } from "../../schema/types";
+import type { WorkflowDefinition } from "../../../schema/types";
 import type { WorkflowBundleEntry, BundleOptions } from "../../bundle/types";
 
 // ============================================================================
