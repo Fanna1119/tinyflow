@@ -26,7 +26,32 @@ A visual workflow editor and runtime built with React Flow and [PocketFlow](http
 - Editor: multi-tab workflow editing removed to simplify sync; import/export and duplicate-edge fixes applied.
 - Examples: updated example flows (for example `examples/agentic-support-ticket.json`) to call LLM functions by default (simulate: false) and to use action-based routing where appropriate.
 
-<!-- image example from public dir  example1.png-->
+- UI: Data-flow aware editing and improved key connections — the editor now analyzes upstream data keys and surfaces them in the node configuration panel, provides a suggestion dropdown for key-based parameters (e.g. `outputKey`, `promptKey`, `inputKey`), and shows compact data-port indicators on nodes to make produced/consumed keys visible on the canvas.
+
+### Data Flow Aware Editor (Feb 2026)
+
+New UX and developer features to make connecting node inputs/outputs easier and less error-prone:
+
+- **Automatic data flow analysis**: the editor runs a lightweight upstream graph analysis to collect store keys produced by upstream nodes and exposes them to the UI for suggestions. (Implementation: `src/ui/hooks/useDataFlowAnalysis.ts`)
+
+- **Key suggestion input**: key-referencing parameters (for example `outputKey`, `promptKey`, `inputKey`, `fromKey`) now use a searchable dropdown that lists available upstream keys, supports keyboard navigation, and indicates when a value matches an upstream producer. (Implementation: `src/ui/components/dataflow/KeySuggestionInput.tsx`)
+
+- **Data port indicators**: nodes display compact pills on their body that show which store keys they produce (outputs) and consume (inputs). Consumed keys highlight when matched to an upstream producer. This gives an at-a-glance view of data propagation. (Implementation: `src/ui/components/dataflow/DataPorts.tsx`, rendered by `src/ui/components/nodes/CustomNodes.tsx`)
+
+- **Node config integration**: the `NodeConfigPanel` displays "Available upstream data" and uses the suggestion input for relevant params. This reduces typing errors and speeds up mapping data between nodes. (Implementation: `src/ui/components/debug/NodeConfigPanel.tsx`)
+
+Developer notes:
+
+- The editor wires data flow into the node render pipeline in `src/ui/components/editor/FlowEditor.tsx` by enriching node `data` with `producedKeys`, `consumedKeys`, and `connectedInputs` for rendering and suggestion context.
+- These features are UI-only and do not change runtime semantics — workflows exported to JSON remain compatible with the schema. The analysis uses parameter conventions (e.g. `outputKey`, `promptKey`) and template parsing for `transform.template` to infer keys.
+
+Quick paths to the new files:
+
+- `src/ui/hooks/useDataFlowAnalysis.ts`
+- `src/ui/components/dataflow/KeySuggestionInput.tsx`
+- `src/ui/components/dataflow/DataPorts.tsx`
+- `src/ui/components/nodes/CustomNodes.tsx` (renders data ports)
+- `src/ui/components/debug/NodeConfigPanel.tsx` (shows suggestions and available keys)
 
 <div align="center">
   <img src="/public/example1.png" alt="Pocket Flow – 100-line minimalist LLM framework" width="600"/>

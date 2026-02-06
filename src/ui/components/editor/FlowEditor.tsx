@@ -19,6 +19,7 @@ import { useFlowEditor } from "../../hooks/useFlowEditor";
 import { useDebugger } from "../../hooks/useDebugger";
 import { useFileOperations } from "../../hooks/useFileOperations";
 import { useWorkflowExecution } from "../../hooks/useWorkflowExecution";
+import { useDataFlowAnalysis } from "../../hooks/useDataFlowAnalysis";
 import type { WorkflowDefinition } from "../../../schema/types";
 import {
   type TinyFlowSettings,
@@ -79,19 +80,37 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
     });
   }, []);
 
-  // Enhance nodes with execution status and mock indicators
+  // Analyze data flow across the graph
+  const dataFlow = useDataFlowAnalysis(state.nodes, state.edges);
+
+  // Enhance nodes with execution status, mock indicators, and data flow
   const enhancedNodes = useMemo(() => {
-    return state.nodes.map((node) => ({
-      ...node,
-      data: {
-        ...node.data,
-        executionStatus: debugState.nodeStatus.get(node.id),
-        hasMock:
-          debugState.testValues.has(node.id) &&
-          debugState.testValues.get(node.id)?.enabled,
-      },
-    }));
-  }, [state.nodes, debugState.nodeStatus, debugState.testValues]);
+    return state.nodes.map((node) => {
+      const flow = dataFlow.get(node.id);
+      const availableKeySet = new Set(
+        flow?.availableKeys.map((k) => k.key) ?? [],
+      );
+      const connectedInputs = new Set(
+        (flow?.consumes ?? [])
+          .filter((c) => availableKeySet.has(c.key))
+          .map((c) => c.key),
+      );
+
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          executionStatus: debugState.nodeStatus.get(node.id),
+          hasMock:
+            debugState.testValues.has(node.id) &&
+            debugState.testValues.get(node.id)?.enabled,
+          producedKeys: flow?.produces.map((p) => p.key) ?? [],
+          consumedKeys: flow?.consumes.map((c) => c.key) ?? [],
+          connectedInputs,
+        },
+      };
+    });
+  }, [state.nodes, debugState.nodeStatus, debugState.testValues, dataFlow]);
 
   // Get selected node data
   const selectedNode = state.selectedNodeId
@@ -257,6 +276,7 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
           onRenameHandle={(handleId, newLabel) =>
             actions.renameClusterHandle(selectedNode.id, handleId, newLabel)
           }
+          dataFlow={dataFlow.get(selectedNode.id)}
         />
       )}
 

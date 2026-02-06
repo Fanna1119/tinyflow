@@ -21,6 +21,8 @@ import type {
   NodeHandle,
 } from "../../../schema/types";
 import type { MockValue } from "../../../compiler";
+import { KeySuggestionInput } from "../dataflow/KeySuggestionInput";
+import { isKeyParam, type NodeDataFlow } from "../../hooks/useDataFlowAnalysis";
 
 interface NodeConfigPanelProps {
   nodeId: string;
@@ -50,6 +52,8 @@ interface NodeConfigPanelProps {
   onRemoveHandle?: (handleId: string) => void;
   /** Rename a handle */
   onRenameHandle?: (handleId: string, newLabel: string) => void;
+  /** Data flow analysis for this node */
+  dataFlow?: NodeDataFlow;
 }
 
 type TabType = "params" | "test";
@@ -73,6 +77,7 @@ export function NodeConfigPanel({
   onAddHandle,
   onRemoveHandle,
   onRenameHandle,
+  dataFlow,
 }: NodeConfigPanelProps) {
   const metadata = registry.get(functionId)?.metadata;
   const [editingHandleId, setEditingHandleId] = useState<string | null>(null);
@@ -467,12 +472,34 @@ export function NodeConfigPanel({
                 </div>
               ) : (
                 <div className="space-y-3">
+                  {/* Upstream data context hint */}
+                  {dataFlow && dataFlow.availableKeys.length > 0 && (
+                    <div className="px-2 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        Available upstream data
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {dataFlow.availableKeys.map((pk) => (
+                          <span
+                            key={`${pk.key}-${pk.sourceNodeId}`}
+                            className="inline-block px-1.5 py-0.5 text-[10px] font-mono rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                            title={`from ${pk.sourceLabel} (${pk.sourceFunctionId})`}
+                          >
+                            {pk.key}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {metadata?.params.map((param) => (
                     <ParameterInput
                       key={param.name}
                       param={param}
                       value={localParams[param.name]}
                       onChange={(value) => handleParamChange(param.name, value)}
+                      functionId={functionId}
+                      dataFlow={dataFlow}
                     />
                   ))}
                   {(!metadata || metadata.params.length === 0) && (
@@ -665,12 +692,39 @@ interface ParameterInputProps {
   param: FunctionParameter;
   value: unknown;
   onChange: (value: unknown) => void;
+  functionId: string;
+  dataFlow?: NodeDataFlow;
 }
 
-function ParameterInput({ param, value, onChange }: ParameterInputProps) {
+function ParameterInput({
+  param,
+  value,
+  onChange,
+  functionId,
+  dataFlow,
+}: ParameterInputProps) {
   const id = `param-${param.name}`;
+  const keyDirection = isKeyParam(param, functionId);
 
   const renderInput = () => {
+    // Use KeySuggestionInput for key-referencing params
+    if (keyDirection && dataFlow) {
+      return (
+        <KeySuggestionInput
+          id={id}
+          value={String(value ?? param.default ?? "")}
+          onChange={(v) => onChange(v)}
+          availableKeys={dataFlow.availableKeys}
+          direction={keyDirection}
+          placeholder={
+            keyDirection === "input"
+              ? "Select upstream key…"
+              : "Name for this output…"
+          }
+        />
+      );
+    }
+
     switch (param.type) {
       case "boolean":
         return (

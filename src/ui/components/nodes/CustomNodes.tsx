@@ -9,6 +9,7 @@ import { registry } from "../../../registry";
 import * as LucideIcons from "lucide-react";
 import type { ExecutionStatus } from "../../hooks/useDebugger";
 import type { NodeHandle } from "../../../schema/types";
+import { DataPorts } from "../dataflow/DataPorts";
 
 // ============================================================================
 // Function Node
@@ -29,6 +30,12 @@ interface FunctionNodeData {
   isSubNode?: boolean;
   /** Parent node ID for sub-nodes */
   parentId?: string;
+  /** Store keys produced by this node */
+  producedKeys?: string[];
+  /** Store keys consumed by this node */
+  consumedKeys?: string[];
+  /** Set of consumed keys that match upstream outputs */
+  connectedInputs?: Set<string>;
 }
 
 // Dynamic icon component - renders the appropriate Lucide icon by name
@@ -117,6 +124,16 @@ export const FunctionNode = memo(({ data, selected }: NodeProps) => {
           </div>
         </div>
       </div>
+
+      {/* Data port indicators */}
+      {((nodeData.producedKeys?.length ?? 0) > 0 ||
+        (nodeData.consumedKeys?.length ?? 0) > 0) && (
+        <DataPorts
+          produces={nodeData.producedKeys ?? []}
+          consumes={nodeData.consumedKeys ?? []}
+          connectedInputs={nodeData.connectedInputs}
+        />
+      )}
 
       <Handle
         type="source"
