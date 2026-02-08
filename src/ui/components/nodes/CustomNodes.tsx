@@ -36,6 +36,8 @@ interface FunctionNodeData {
   consumedKeys?: string[];
   /** Set of consumed keys that match upstream outputs */
   connectedInputs?: Set<string>;
+  /** External runtime dependencies required by this function */
+  runtimeDependencies?: string[];
 }
 
 // Dynamic icon component - renders the appropriate Lucide icon by name

@@ -9,8 +9,10 @@ export {
   registerTestFunction,
   clearTestFunctions,
   FunctionSpy,
+  deepEqual,
   assert,
   assertEqual,
   type TestWorkflowOptions,
   type TestResult,
+  type SpyCall,
 } from "./harness";

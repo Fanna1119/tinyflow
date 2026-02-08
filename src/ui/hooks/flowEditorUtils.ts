@@ -4,6 +4,7 @@
 
 import type { Node, Edge } from "@xyflow/react";
 import type { WorkflowNode, WorkflowEdge } from "../../schema/types";
+import { registry } from "../../registry";
 
 // Handle colors for sub-node edges (must match CustomNodes.tsx)
 export const HANDLE_COLOR_KEYS = [
@@ -28,6 +29,7 @@ export function workflowNodeToReactFlowNode(
   node: WorkflowNode,
   hasError: boolean,
 ): Node {
+  const fnMeta = registry.get(node.functionId)?.metadata;
   return {
     id: node.id,
     type: getReactFlowNodeType(node, hasError),
@@ -44,6 +46,8 @@ export function workflowNodeToReactFlowNode(
       nodeType: node.nodeType,
       parentId: node.parentId,
       isSubNode: node.nodeType === "subNode",
+      // Runtime dependencies from registry metadata
+      runtimeDependencies: fnMeta?.runtimeDependencies,
     },
   };
 }

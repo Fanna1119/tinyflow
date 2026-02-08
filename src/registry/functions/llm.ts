@@ -16,6 +16,7 @@ registerFunction(
     description:
       "Sends a prompt to an LLM (OpenAI-compatible) and returns the response.",
     category: "LLM",
+    runtimeDependencies: ["openai@^4.0.0"],
     params: [
       param("promptKey", "string", {
         required: true,
@@ -151,6 +152,7 @@ registerFunction(
     name: "LLM JSON Chat",
     description: "Sends a prompt to an LLM and parses the response as JSON.",
     category: "LLM",
+    runtimeDependencies: ["openai@^4.0.0"],
     params: [
       param("promptKey", "string", {
         required: true,
@@ -285,6 +287,7 @@ registerFunction(
     description:
       "Uses an LLM to make a decision/classification from given options. Returns an action for routing.",
     category: "LLM",
+    runtimeDependencies: ["openai@^4.0.0"],
     params: [
       param("promptKey", "string", {
         required: true,

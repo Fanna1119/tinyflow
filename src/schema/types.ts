@@ -182,4 +182,11 @@ export interface FunctionMetadata {
   outputs?: string[];
   /** Icon name (lucide-react) */
   icon?: string;
+  /**
+   * External npm packages required at runtime.
+   * These are NOT bundled inline — instead they are listed in the
+   * generated package.json so the deployer can `npm install` them.
+   * Use standard npm dependency specifiers, e.g. "mongoose@^7.0.0".
+   */
+  runtimeDependencies?: string[];
 }
