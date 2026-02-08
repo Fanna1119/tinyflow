@@ -346,6 +346,19 @@ For example:
 cd src/registry && bun add openai
 ```
 
+Convenience scripts are available in the root `package.json` so you don't need to `cd` into the registry:
+
+```bash
+bun run add:dep <package>      # install a registry dependency
+bun run remove:dep <package>   # remove a registry dependency
+```
+
+For example:
+
+```bash
+bun run add:dep openai
+```
+
 The package will be installed under the registry workspace and hoisted by the package manager. All existing imports (`../../registry`, etc.) continue to work unchanged.
 
 ---
