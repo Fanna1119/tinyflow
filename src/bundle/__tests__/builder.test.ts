@@ -2,9 +2,15 @@
  * Bundle Builder Tests
  */
 
-import { describe, it, expect } from "vitest";
-import { buildBundle, buildBundleFromJson } from "../builder";
+import { describe, it, expect, afterEach } from "vitest";
+import {
+  buildBundle,
+  buildBundleFromJson,
+  parseDependencySpec,
+  collectRuntimeDependencies,
+} from "../builder";
 import type { WorkflowDefinition } from "../../schema/types";
+import { registry } from "../../registry/registry";
 
 // ============================================================================
 // Test Fixtures
@@ -403,5 +409,288 @@ describe("generated bundle functionality", () => {
     expect(result.code).toContain("core.end");
     expect(result.code).toContain("customOutput");
     expect(result.code).toContain('"test": true');
+  });
+});
+
+// ============================================================================
+// Runtime Dependencies Tests
+// ============================================================================
+
+describe("parseDependencySpec", () => {
+  it("should parse name@version specifiers", () => {
+    expect(parseDependencySpec("openai@^4.0.0")).toEqual({
+      name: "openai",
+      version: "^4.0.0",
+    });
+  });
+
+  it("should handle scoped packages", () => {
+    expect(parseDependencySpec("@prisma/client@^5.0.0")).toEqual({
+      name: "@prisma/client",
+      version: "^5.0.0",
+    });
+  });
+
+  it("should default to 'latest' when no version given", () => {
+    expect(parseDependencySpec("mongoose")).toEqual({
+      name: "mongoose",
+      version: "latest",
+    });
+  });
+
+  it("should handle exact versions", () => {
+    expect(parseDependencySpec("lodash@4.17.21")).toEqual({
+      name: "lodash",
+      version: "4.17.21",
+    });
+  });
+});
+
+describe("collectRuntimeDependencies", () => {
+  afterEach(() => {
+    // Clean up test registrations
+    for (const id of registry.getIds()) {
+      if (id.startsWith("test.")) {
+        registry.unregister(id);
+      }
+    }
+  });
+
+  it("should return empty object when no functions have deps", () => {
+    const deps = collectRuntimeDependencies(
+      new Set(["core.start", "core.end"]),
+    );
+    expect(deps).toEqual({});
+  });
+
+  it("should collect deps from functions that declare runtimeDependencies", () => {
+    // The llm.chat function has runtimeDependencies: ["openai@^4.0.0"]
+    const deps = collectRuntimeDependencies(new Set(["llm.chat"]));
+    expect(deps).toEqual({ openai: "^4.0.0" });
+  });
+
+  it("should de-duplicate across multiple functions sharing the same dep", () => {
+    const deps = collectRuntimeDependencies(
+      new Set(["llm.chat", "llm.jsonChat", "llm.decide"]),
+    );
+    // All three declare openai@^4.0.0, should appear once
+    expect(deps).toEqual({ openai: "^4.0.0" });
+  });
+
+  it("should merge deps from different functions", () => {
+    // Register a test function with a different dep
+    registry.register({
+      metadata: {
+        id: "test.mongo",
+        name: "Test Mongo",
+        description: "Test",
+        category: "Test",
+        params: [],
+        runtimeDependencies: ["mongoose@^7.0.0"],
+      },
+      execute: async () => ({ output: null, success: true }),
+    });
+
+    const deps = collectRuntimeDependencies(
+      new Set(["llm.chat", "test.mongo"]),
+    );
+    expect(deps).toEqual({
+      openai: "^4.0.0",
+      mongoose: "^7.0.0",
+    });
+  });
+
+  it("should keep more specific version over 'latest'", () => {
+    registry.register({
+      metadata: {
+        id: "test.lodash1",
+        name: "Test Lodash",
+        description: "Test",
+        category: "Test",
+        params: [],
+        runtimeDependencies: ["lodash"],
+      },
+      execute: async () => ({ output: null, success: true }),
+    });
+    registry.register({
+      metadata: {
+        id: "test.lodash2",
+        name: "Test Lodash 2",
+        description: "Test",
+        category: "Test",
+        params: [],
+        runtimeDependencies: ["lodash@^4.17.0"],
+      },
+      execute: async () => ({ output: null, success: true }),
+    });
+
+    const deps = collectRuntimeDependencies(
+      new Set(["test.lodash1", "test.lodash2"]),
+    );
+    expect(deps).toEqual({ lodash: "^4.17.0" });
+  });
+});
+
+describe("bundle package.json emission", () => {
+  afterEach(() => {
+    for (const id of registry.getIds()) {
+      if (id.startsWith("test.")) {
+        registry.unregister(id);
+      }
+    }
+  });
+
+  it("should NOT emit package.json when no runtime deps are needed", async () => {
+    const workflow: WorkflowDefinition = {
+      id: "simple",
+      name: "Simple",
+      version: "1.0.0",
+      nodes: [
+        {
+          id: "s",
+          functionId: "core.start",
+          params: {},
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: "e",
+          functionId: "core.end",
+          params: {},
+          position: { x: 100, y: 0 },
+        },
+      ],
+      edges: [{ from: "s", to: "e", action: "default" }],
+      flow: { startNodeId: "s" },
+    };
+
+    const result = await buildBundle({ workflow, format: "esm" });
+    expect(result.success).toBe(true);
+    expect(result.files).toBeDefined();
+    expect(result.files!["package.json"]).toBeUndefined();
+  });
+
+  it("should emit package.json when workflow uses functions with runtime deps", async () => {
+    const workflow: WorkflowDefinition = {
+      id: "llm-flow",
+      name: "LLM Flow",
+      version: "1.0.0",
+      nodes: [
+        {
+          id: "s",
+          functionId: "core.start",
+          params: {},
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: "chat",
+          functionId: "llm.chat",
+          params: { promptKey: "p", outputKey: "o" },
+          position: { x: 100, y: 0 },
+        },
+        {
+          id: "e",
+          functionId: "core.end",
+          params: {},
+          position: { x: 200, y: 0 },
+        },
+      ],
+      edges: [
+        { from: "s", to: "chat", action: "default" },
+        { from: "chat", to: "e", action: "default" },
+      ],
+      flow: { startNodeId: "s" },
+    };
+
+    const result = await buildBundle({ workflow, format: "esm" });
+    expect(result.success).toBe(true);
+    expect(result.files!["package.json"]).toBeDefined();
+
+    const pkg = JSON.parse(result.files!["package.json"]);
+    expect(pkg.dependencies).toBeDefined();
+    expect(pkg.dependencies.openai).toBe("^4.0.0");
+    expect(pkg.private).toBe(true);
+    expect(pkg.name).toContain("llm-flow");
+  });
+
+  it("should include bun install step in Dockerfile when deps exist", async () => {
+    const workflow: WorkflowDefinition = {
+      id: "llm-flow",
+      name: "LLM Docker Flow",
+      version: "1.0.0",
+      nodes: [
+        {
+          id: "s",
+          functionId: "core.start",
+          params: {},
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: "chat",
+          functionId: "llm.chat",
+          params: { promptKey: "p", outputKey: "o" },
+          position: { x: 100, y: 0 },
+        },
+        {
+          id: "e",
+          functionId: "core.end",
+          params: {},
+          position: { x: 200, y: 0 },
+        },
+      ],
+      edges: [
+        { from: "s", to: "chat", action: "default" },
+        { from: "chat", to: "e", action: "default" },
+      ],
+      flow: { startNodeId: "s" },
+    };
+
+    const result = await buildBundle({
+      workflow,
+      format: "esm",
+      includeServer: true,
+      emitDocker: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.files!["Dockerfile"]).toContain("bun install");
+  });
+
+  it("should work with CJS format too", async () => {
+    const workflow: WorkflowDefinition = {
+      id: "llm-cjs",
+      name: "LLM CJS",
+      version: "1.0.0",
+      nodes: [
+        {
+          id: "s",
+          functionId: "core.start",
+          params: {},
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: "chat",
+          functionId: "llm.chat",
+          params: { promptKey: "p", outputKey: "o" },
+          position: { x: 100, y: 0 },
+        },
+        {
+          id: "e",
+          functionId: "core.end",
+          params: {},
+          position: { x: 200, y: 0 },
+        },
+      ],
+      edges: [
+        { from: "s", to: "chat", action: "default" },
+        { from: "chat", to: "e", action: "default" },
+      ],
+      flow: { startNodeId: "s" },
+    };
+
+    const result = await buildBundle({ workflow, format: "cjs" });
+    expect(result.success).toBe(true);
+    expect(result.files!["package.json"]).toBeDefined();
+
+    const pkg = JSON.parse(result.files!["package.json"]);
+    expect(pkg.dependencies.openai).toBe("^4.0.0");
   });
 });

@@ -10,23 +10,32 @@
       "params": {
         "input": {
           "location": {
-            "name": "San Francisco",
-            "latitude": 37.7749,
-            "longitude": -122.4194
+            "name": "Scottburgh",
+            "latitude": 30.2867,
+            "longitude": 30.7532
           }
         }
       },
-      "position": { "x": 100, "y": 150 }
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "label": "core.start"
     },
     {
       "id": "fetch-weather",
       "functionId": "http.request",
       "params": {
-        "url": "https://api.open-meteo.com/v1/forecast?latitude=37.7749&longitude=-122.4194&current_weather=true",
+        "url": "https://api.open-meteo.com/v1/forecast?latitude=-30.2867&longitude=30.7532&current_weather=true",
+
         "method": "GET",
         "outputKey": "weather"
       },
-      "position": { "x": 350, "y": 150 }
+      "position": {
+        "x": 350,
+        "y": 150
+      },
+      "label": "http.request"
     },
     {
       "id": "build-prompt",
@@ -35,7 +44,11 @@
         "template": "You are a friendly local guide. The current weather in {{input.location.name}} is: temperature {{weather.data.current_weather.temperature}}°C, wind speed {{weather.data.current_weather.windspeed}} m/s, weather code {{weather.data.current_weather.weathercode}}. Suggest 5 nice activities appropriate for this weather and briefly explain why each is suitable.",
         "outputKey": "prompt"
       },
-      "position": { "x": 650, "y": 150 }
+      "position": {
+        "x": 650,
+        "y": 150
+      },
+      "label": "transform.template"
     },
     {
       "id": "ask-llm",
@@ -44,9 +57,13 @@
         "systemPrompt": "You are a helpful assistant that suggests activities based on current weather.",
         "promptKey": "prompt",
         "outputKey": "activities",
-        "simulate": true
+        "simulate": false
       },
-      "position": { "x": 950, "y": 150 }
+      "position": {
+        "x": 950,
+        "y": 150
+      },
+      "label": "llm.chat"
     },
     {
       "id": "end",
@@ -54,20 +71,43 @@
       "params": {
         "outputKey": "activities"
       },
-      "position": { "x": 1200, "y": 150 }
+      "position": {
+        "x": 1200,
+        "y": 150
+      },
+      "label": "core.end"
     }
   ],
   "edges": [
-    { "from": "start", "to": "fetch-weather", "action": "default" },
-    { "from": "fetch-weather", "to": "build-prompt", "action": "success" },
-    { "from": "build-prompt", "to": "ask-llm", "action": "default" },
-    { "from": "ask-llm", "to": "end", "action": "default" }
+    {
+      "from": "start",
+      "to": "fetch-weather",
+      "action": "default",
+      "edgeType": "default"
+    },
+    {
+      "from": "fetch-weather",
+      "to": "build-prompt",
+      "action": "success",
+      "edgeType": "default"
+    },
+    {
+      "from": "build-prompt",
+      "to": "ask-llm",
+      "action": "default",
+      "edgeType": "default"
+    },
+    {
+      "from": "ask-llm",
+      "to": "end",
+      "action": "default",
+      "edgeType": "default"
+    }
   ],
   "flow": {
     "startNodeId": "start"
   },
   "metadata": {
-    "pattern": "weather-activities",
-    "source": "open-meteo"
+    "updatedAt": "2026-02-06T10:19:27.368Z"
   }
 }

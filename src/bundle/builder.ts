@@ -89,6 +89,64 @@ function getUsedFunctionIds(workflow: WorkflowDefinition): Set<string> {
 }
 
 /**
+ * Parse a dependency specifier like "openai@^4.0.0" into name + version range.
+ */
+export function parseDependencySpec(spec: string): {
+  name: string;
+  version: string;
+} {
+  // Handle scoped packages: @scope/pkg@^1.0.0
+  const idx = spec.lastIndexOf("@");
+  if (idx > 0) {
+    return { name: spec.slice(0, idx), version: spec.slice(idx + 1) };
+  }
+  return { name: spec, version: "latest" };
+}
+
+/**
+ * Collect runtime dependencies from all functions used in a workflow.
+ * Returns a de-duplicated map of { packageName: versionRange }.
+ */
+export function collectRuntimeDependencies(
+  usedFunctionIds: Set<string>,
+): Record<string, string> {
+  const deps: Record<string, string> = {};
+
+  for (const id of usedFunctionIds) {
+    const fn = registry.get(id);
+    if (!fn?.metadata.runtimeDependencies) continue;
+
+    for (const spec of fn.metadata.runtimeDependencies) {
+      const { name, version } = parseDependencySpec(spec);
+      // If already listed, keep the more specific (non-"latest") version
+      if (!deps[name] || deps[name] === "latest") {
+        deps[name] = version;
+      }
+    }
+  }
+
+  return deps;
+}
+
+/**
+ * Generate a package.json string for the bundle output.
+ * Only emitted when the workflow uses functions with runtimeDependencies.
+ */
+function generateBundlePackageJson(
+  workflowName: string,
+  dependencies: Record<string, string>,
+): string {
+  const pkg = {
+    name: `tinyflow-bundle-${workflowName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    version: "1.0.0",
+    private: true,
+    description: `TinyFlow bundle – ${workflowName}`,
+    dependencies,
+  };
+  return JSON.stringify(pkg, null, 2) + "\n";
+}
+
+/**
  * Generate the runtime code with only the functions used by the workflow
  */
 function generateRuntimeCode(usedFunctions: Set<string>): string {
@@ -756,6 +814,7 @@ console.log(\`TinyFlow server listening on port \${process.env.PORT || ${serverP
       const dockerfile = `FROM oven/bun:latest
 WORKDIR /app
 COPY . /app
+RUN if [ -f package.json ]; then bun install --production; fi
 ENV NODE_ENV=production
 EXPOSE ${serverPort}
 CMD ["bun", "server.js"]
@@ -774,6 +833,16 @@ services:
     restart: unless-stopped
 `;
       files["docker-compose.yml"] = compose;
+    }
+
+    // Collect runtime dependencies from used functions and emit package.json
+    const usedFunctions = getUsedFunctionIds(workflow);
+    const runtimeDeps = collectRuntimeDependencies(usedFunctions);
+    if (Object.keys(runtimeDeps).length > 0) {
+      files["package.json"] = generateBundlePackageJson(
+        workflow.name,
+        runtimeDeps,
+      );
     }
 
     return { success: true, code, files };
@@ -880,6 +949,7 @@ export async function buildMultiWorkflowBundle(
       const dockerfile = `FROM oven/bun:latest
 WORKDIR /app
 COPY . /app
+RUN if [ -f package.json ]; then bun install --production; fi
 ENV NODE_ENV=production
 EXPOSE ${serverPort}
 CMD ["bun", "server.js"]
@@ -900,6 +970,22 @@ services:
     restart: unless-stopped
 `;
       files["docker-compose.yml"] = compose;
+    }
+
+    // Collect runtime dependencies from all workflows and emit package.json
+    const allUsedFunctions = new Set<string>();
+    for (const entry of workflows) {
+      for (const fnId of getUsedFunctionIds(entry.workflow)) {
+        allUsedFunctions.add(fnId);
+      }
+    }
+    const runtimeDeps = collectRuntimeDependencies(allUsedFunctions);
+    if (Object.keys(runtimeDeps).length > 0) {
+      const combinedName = workflows.map((w) => w.workflow.name).join("-");
+      files["package.json"] = generateBundlePackageJson(
+        combinedName,
+        runtimeDeps,
+      );
     }
 
     // Generate README for the bundle
