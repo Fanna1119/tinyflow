@@ -306,6 +306,48 @@ If the function should work in standalone bundles, add implementation to `src/bu
 }`,
 ```
 
+### Runtime Dependencies
+
+Registry functions that require external npm packages should declare them via the `runtimeDependencies` metadata field. These are **not** bundled inline — instead they are listed in the generated `package.json` when bundling, so the deployer can install them.
+
+```typescript
+registerFunction(
+  {
+    id: "llm.chat",
+    name: "LLM Chat",
+    description: "Sends a prompt to an LLM.",
+    category: "LLM",
+    runtimeDependencies: ["openai@^4.0.0"], // <-- declare external deps here
+    params: [
+      /* ... */
+    ],
+  },
+  async (params, context) => {
+    /* ... */
+  },
+);
+```
+
+When a function declares `runtimeDependencies`, it will be highlighted in the sidebar with an amber badge showing the install command.
+
+### Installing Registry Dependencies
+
+The registry has its own `package.json` at `src/registry/package.json` (`@tinyflow/registry`), configured as a workspace in the root `package.json`. This keeps registry-specific dependencies separate from the main project.
+
+To install a dependency scoped to the registry:
+
+```bash
+cd src/registry && bun add <package>
+```
+
+For example:
+
+```bash
+cd src/registry && bun add openai
+```
+
+The package will be installed under the registry workspace and hoisted by the package manager. All existing imports (`../../registry`, etc.) continue to work unchanged.
+
 ---
 
 ## Example Custom Functions

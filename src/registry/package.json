@@ -1,0 +1,11 @@
+{
+  "name": "@tinyflow/registry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TinyFlow function registry - built-in and user-defined workflow functions",
+  "main": "index.ts",
+  "types": "index.ts",
+  "dependencies": {},
+  "devDependencies": {}
+}
