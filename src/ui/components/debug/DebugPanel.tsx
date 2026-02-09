@@ -1,9 +1,9 @@
 /**
  * Debug Panel Component
- * Shows execution timeline and test value configuration
+ * Shows execution timeline, performance metrics, and test value configuration
  */
 
-import { memo, useState } from "react";
+import { memo, useState, useMemo } from "react";
 import {
   Bug,
   ChevronDown,
@@ -18,8 +18,28 @@ import {
   List,
   SkipForward,
   Footprints,
+  Activity,
+  Download,
+  Camera,
 } from "lucide-react";
-import type { ExecutionStep, ExecutionStatus } from "../hooks/useDebugger";
+import type { ExecutionStep, ExecutionStatus } from "../../hooks/useDebugger";
+import {
+  extractProfiles,
+  aggregateStats,
+  sortProfiles,
+  severity,
+  severityColor,
+  severityBg,
+  formatBytes,
+  formatDuration,
+  formatMicroseconds,
+  exportAsJson,
+  exportAsCsv,
+  downloadFile,
+  type SortField,
+  type SortDir,
+} from "../../utils/profiler";
+import { requestHeapSnapshot } from "../../utils/serverApi";
 
 // ============================================================================
 // Types
@@ -54,6 +74,10 @@ interface DebugPanelProps {
   isPaused: boolean;
   /** Advance to next step */
   onNextStep: () => void;
+  /** Whether profiling is enabled */
+  profilingEnabled: boolean;
+  /** Toggle profiling */
+  onToggleProfiling: () => void;
 }
 
 // ============================================================================
@@ -90,6 +114,7 @@ const ExecutionStepRow = memo(function ExecutionStepRow({
 }) {
   const duration =
     step.endTime && step.startTime ? step.endTime - step.startTime : null;
+  const profile = step.profile;
 
   return (
     <button
@@ -120,8 +145,26 @@ const ExecutionStepRow = memo(function ExecutionStepRow({
         )}
       </div>
 
+      {/* Inline profile badges */}
+      {profile && (
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span
+            className="text-xs px-1.5 py-0.5 rounded tabular-nums bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+            title={`Heap: ${formatBytes(profile.heapDelta)}`}
+          >
+            {formatBytes(profile.heapDelta)}
+          </span>
+          <span
+            className="text-xs px-1.5 py-0.5 rounded tabular-nums bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300"
+            title={`CPU: ${profile.cpuPercent}%`}
+          >
+            {profile.cpuPercent.toFixed(0)}%
+          </span>
+        </div>
+      )}
+
       {duration !== null && (
-        <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+        <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums shrink-0">
           {duration < 1000
             ? `${duration}ms`
             : `${(duration / 1000).toFixed(1)}s`}
@@ -150,13 +193,80 @@ export const DebugPanel = memo(function DebugPanel({
   onToggleStepMode,
   isPaused,
   onNextStep,
+  profilingEnabled,
+  onToggleProfiling,
 }: DebugPanelProps) {
-  const [activeTab, setActiveTab] = useState<"timeline" | "output">("timeline");
+  const [activeTab, setActiveTab] = useState<"timeline" | "output" | "metrics">(
+    "timeline",
+  );
+  const [sortField, setSortField] = useState<SortField>("durationMs");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
 
   // Get the last completed step for output view
   const lastCompletedStep = [...steps]
     .reverse()
     .find((s) => s.status === "success" || s.status === "error");
+
+  // Profile data for metrics tab
+  const profileRows = useMemo(() => extractProfiles(steps), [steps]);
+  const sortedRows = useMemo(
+    () => sortProfiles(profileRows, sortField, sortDir),
+    [profileRows, sortField, sortDir],
+  );
+  const stats = useMemo(() => aggregateStats(profileRows), [profileRows]);
+  const allDurations = useMemo(
+    () => profileRows.map((r) => r.durationMs),
+    [profileRows],
+  );
+  const allHeapDeltas = useMemo(
+    () => profileRows.map((r) => Math.abs(r.heapDelta)),
+    [profileRows],
+  );
+  const allCpuPcts = useMemo(
+    () => profileRows.map((r) => r.cpuPercent),
+    [profileRows],
+  );
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortField(field);
+      setSortDir("desc");
+    }
+  };
+
+  const handleSnapshot = async () => {
+    setSnapshotLoading(true);
+    try {
+      const result = await requestHeapSnapshot();
+      alert(
+        `Heap snapshot saved: ${result.file}\nCheck .tinyflow-snapshots/ directory`,
+      );
+    } catch (e) {
+      alert(
+        `Snapshot failed: ${e instanceof Error ? e.message : "Unknown error"}`,
+      );
+    } finally {
+      setSnapshotLoading(false);
+    }
+  };
+
+  const handleExport = (format: "json" | "csv") => {
+    if (format === "json") {
+      downloadFile(
+        exportAsJson(profileRows, stats),
+        `tinyflow-profile-${Date.now()}.json`,
+      );
+    } else {
+      downloadFile(
+        exportAsCsv(profileRows),
+        `tinyflow-profile-${Date.now()}.csv`,
+        "text/csv",
+      );
+    }
+  };
 
   return (
     <div
@@ -216,6 +326,25 @@ export const DebugPanel = memo(function DebugPanel({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Profiling toggle */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleProfiling();
+            }}
+            className={`
+              p-1 rounded transition-colors
+              ${
+                profilingEnabled
+                  ? "bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400"
+                  : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              }
+            `}
+            title={profilingEnabled ? "Profiling enabled" : "Enable profiling"}
+          >
+            <Activity className="w-4 h-4" />
+          </button>
+
           {/* Step mode toggle */}
           <button
             onClick={(e) => {
@@ -303,6 +432,20 @@ export const DebugPanel = memo(function DebugPanel({
             >
               <Play className="w-4 h-4" />
             </button>
+            <button
+              onClick={() => setActiveTab("metrics")}
+              className={`
+                p-2 rounded transition-colors
+                ${
+                  activeTab === "metrics"
+                    ? "bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400"
+                    : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                }
+              `}
+              title="Performance Metrics"
+            >
+              <Activity className="w-4 h-4" />
+            </button>
           </div>
 
           {/* Tab content */}
@@ -374,6 +517,170 @@ export const DebugPanel = memo(function DebugPanel({
                   <div className="h-full flex items-center justify-center text-gray-500 dark:text-gray-400 text-sm">
                     No output yet
                   </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "metrics" && (
+              <div className="h-full flex flex-col overflow-hidden">
+                {profileRows.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-gray-500 dark:text-gray-400 text-sm gap-2">
+                    <Activity className="w-8 h-8 opacity-40" />
+                    {profilingEnabled
+                      ? "Run the workflow to collect profiling data"
+                      : "Enable profiling to collect performance data"}
+                  </div>
+                ) : (
+                  <>
+                    {/* Aggregate stats bar */}
+                    <div className="flex items-center gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-xs shrink-0">
+                      <span className="text-gray-500 dark:text-gray-400">
+                        Steps:{" "}
+                        <span className="font-medium text-gray-700 dark:text-gray-200">
+                          {stats.stepCount}
+                        </span>
+                      </span>
+                      <span className="text-gray-500 dark:text-gray-400">
+                        Total:{" "}
+                        <span className="font-medium text-gray-700 dark:text-gray-200">
+                          {formatDuration(stats.totalDurationMs)}
+                        </span>
+                      </span>
+                      <span className="text-gray-500 dark:text-gray-400">
+                        Heap Δ:{" "}
+                        <span className="font-medium text-gray-700 dark:text-gray-200">
+                          {formatBytes(stats.totalHeapDelta)}
+                        </span>
+                      </span>
+                      <span className="text-gray-500 dark:text-gray-400">
+                        Peak:{" "}
+                        <span className="font-medium text-gray-700 dark:text-gray-200">
+                          {formatBytes(stats.peakHeap)}
+                        </span>
+                      </span>
+
+                      <div className="ml-auto flex items-center gap-1">
+                        <button
+                          onClick={() => handleExport("json")}
+                          className="px-2 py-0.5 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                          title="Export as JSON"
+                        >
+                          <Download className="w-3 h-3 inline mr-1" />
+                          JSON
+                        </button>
+                        <button
+                          onClick={() => handleExport("csv")}
+                          className="px-2 py-0.5 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                          title="Export as CSV"
+                        >
+                          <Download className="w-3 h-3 inline mr-1" />
+                          CSV
+                        </button>
+                        <button
+                          onClick={handleSnapshot}
+                          disabled={snapshotLoading}
+                          className="px-2 py-0.5 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                          title="Take heap snapshot"
+                        >
+                          <Camera className="w-3 h-3 inline mr-1" />
+                          {snapshotLoading ? "…" : "Snapshot"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Sortable table */}
+                    <div className="flex-1 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                          <tr>
+                            <th className="text-left px-3 py-1.5 font-medium text-gray-500 dark:text-gray-400 w-6">
+                              #
+                            </th>
+                            <th className="text-left px-3 py-1.5 font-medium text-gray-500 dark:text-gray-400">
+                              Node
+                            </th>
+                            <th
+                              className="text-right px-3 py-1.5 font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 select-none"
+                              onClick={() => toggleSort("durationMs")}
+                            >
+                              Duration{" "}
+                              {sortField === "durationMs" &&
+                                (sortDir === "desc" ? "↓" : "↑")}
+                            </th>
+                            <th
+                              className="text-right px-3 py-1.5 font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 select-none"
+                              onClick={() => toggleSort("heapDelta")}
+                            >
+                              Heap Δ{" "}
+                              {sortField === "heapDelta" &&
+                                (sortDir === "desc" ? "↓" : "↑")}
+                            </th>
+                            <th
+                              className="text-right px-3 py-1.5 font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 select-none"
+                              onClick={() => toggleSort("cpuPercent")}
+                            >
+                              CPU %{" "}
+                              {sortField === "cpuPercent" &&
+                                (sortDir === "desc" ? "↓" : "↑")}
+                            </th>
+                            <th
+                              className="text-right px-3 py-1.5 font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 select-none"
+                              onClick={() => toggleSort("cpuTotalUs")}
+                            >
+                              CPU Time{" "}
+                              {sortField === "cpuTotalUs" &&
+                                (sortDir === "desc" ? "↓" : "↑")}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                          {sortedRows.map((row, i) => {
+                            const durSev = severity(
+                              row.durationMs,
+                              allDurations,
+                            );
+                            const heapSev = severity(
+                              Math.abs(row.heapDelta),
+                              allHeapDeltas,
+                            );
+                            const cpuSev = severity(row.cpuPercent, allCpuPcts);
+                            return (
+                              <tr
+                                key={`${row.nodeId}-${i}`}
+                                className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
+                                onClick={() => onStepClick?.(row.nodeId)}
+                              >
+                                <td className="px-3 py-1.5 text-gray-400 tabular-nums">
+                                  {i + 1}
+                                </td>
+                                <td className="px-3 py-1.5 font-mono text-gray-700 dark:text-gray-200 truncate max-w-[160px]">
+                                  {row.nodeId}
+                                </td>
+                                <td
+                                  className={`px-3 py-1.5 text-right tabular-nums font-medium ${severityColor(durSev)}`}
+                                >
+                                  {formatDuration(row.durationMs)}
+                                </td>
+                                <td
+                                  className={`px-3 py-1.5 text-right tabular-nums font-medium ${severityColor(heapSev)}`}
+                                >
+                                  {formatBytes(row.heapDelta)}
+                                </td>
+                                <td
+                                  className={`px-3 py-1.5 text-right tabular-nums font-medium ${severityColor(cpuSev)}`}
+                                >
+                                  {row.cpuPercent.toFixed(1)}%
+                                </td>
+                                <td className="px-3 py-1.5 text-right tabular-nums text-gray-500 dark:text-gray-400">
+                                  {formatMicroseconds(row.cpuTotalUs)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
               </div>
             )}

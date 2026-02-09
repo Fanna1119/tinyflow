@@ -25,12 +25,42 @@ export interface MockValue {
 }
 
 /**
+ * Performance profile captured per-node execution
+ */
+export interface NodeProfile {
+  /** Node ID */
+  nodeId: string;
+  /** Wall-clock duration in milliseconds */
+  durationMs: number;
+  /** Heap used before execution (bytes) */
+  heapUsedBefore: number;
+  /** Heap used after execution (bytes) */
+  heapUsedAfter: number;
+  /** Heap delta (bytes, positive = growth) */
+  heapDelta: number;
+  /** RSS before execution (bytes) */
+  rssBefore: number;
+  /** RSS after execution (bytes) */
+  rssAfter: number;
+  /** CPU user time consumed (microseconds) */
+  cpuUserUs: number;
+  /** CPU system time consumed (microseconds) */
+  cpuSystemUs: number;
+  /** Approximate CPU percentage (single-thread) */
+  cpuPercent: number;
+  /** Timestamp when measurement started (ms since epoch) */
+  timestamp: number;
+}
+
+/**
  * Debug callbacks for tracking execution
  */
 export interface DebugCallbacks {
   onBeforeNode?: (nodeId: string) => void | Promise<void>;
   onNodeStart?: (nodeId: string, params: Record<string, unknown>) => void;
   onNodeComplete?: (nodeId: string, success: boolean, output: unknown) => void;
+  /** Called after a node completes with performance metrics (when profiling is enabled) */
+  onNodeProfile?: (nodeId: string, profile: NodeProfile) => void;
 }
 
 /**

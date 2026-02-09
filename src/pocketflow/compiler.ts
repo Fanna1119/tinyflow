@@ -32,11 +32,18 @@ import {
   type MockValue,
   type DebugCallbacks,
   type MemoryLimits,
+  type NodeProfile,
   createSharedStore,
 } from "../pocketflow/shared";
 
 // Re-export types for backward compatibility
-export type { SharedStore, MockValue, DebugCallbacks, MemoryLimits };
+export type {
+  SharedStore,
+  MockValue,
+  DebugCallbacks,
+  MemoryLimits,
+  NodeProfile,
+};
 export { createSharedStore };
 
 // ============================================================================

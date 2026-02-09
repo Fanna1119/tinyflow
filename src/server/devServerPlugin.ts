@@ -29,12 +29,15 @@ interface RunWorkflowRequest {
   mockValues?: Record<string, MockValue>;
   /** When true, execution pauses before each node and waits for step-resume */
   stepMode?: boolean;
+  /** When true, capture per-node performance metrics (time, memory, CPU) */
+  profiling?: boolean;
 }
 
 interface NodeEvent {
   type:
     | "node_start"
     | "node_complete"
+    | "node_profile"
     | "log"
     | "error"
     | "done"
@@ -47,6 +50,7 @@ interface NodeEvent {
   output?: unknown;
   message?: string;
   sessionId?: string;
+  profile?: import("../pocketflow/shared").NodeProfile;
   result?: {
     success: boolean;
     logs: string[];
@@ -257,6 +261,7 @@ export function tinyflowDevServer(): Plugin {
             const result = await runWorkflow(body.workflow, {
               env: { ...envForRuntime, ...body.env },
               mockValues: mockValuesMap,
+              profiling: body.profiling,
               onBeforeNode,
               onNodeStart: (nodeId, params) => {
                 sendSSE(res, { type: "node_start", nodeId, params });
@@ -269,6 +274,11 @@ export function tinyflowDevServer(): Plugin {
                   output,
                 });
               },
+              onNodeProfile: body.profiling
+                ? (nodeId, profile) => {
+                    sendSSE(res, { type: "node_profile", nodeId, profile });
+                  }
+                : undefined,
               onLog: (message) => {
                 sendSSE(res, { type: "log", message });
               },
@@ -414,6 +424,39 @@ export function tinyflowDevServer(): Plugin {
             console.log(`[TinyFlow] Debug session stopped: ${body.sessionId}`);
 
             sendJson(res, { ok: true });
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Unknown error";
+            sendJson(res, { error: message }, 500);
+          }
+          return;
+        }
+
+        // POST /api/debug-snapshot - Take a V8 heap snapshot on-demand
+        if (req.method === "POST" && req.url === "/api/debug-snapshot") {
+          try {
+            const v8 = await import("v8");
+            const fs = await import("fs/promises");
+            const path = await import("path");
+            const { Writable } = await import("stream");
+
+            const snapshotDir = path.join(process.cwd(), ".tinyflow-snapshots");
+            await fs.mkdir(snapshotDir, { recursive: true });
+
+            const filename = `heap-${Date.now()}.heapsnapshot`;
+            const filePath = path.join(snapshotDir, filename);
+
+            // Write heap snapshot using the stream API
+            const snapshotStream = v8.writeHeapSnapshot(filePath);
+
+            sendJson(res, {
+              success: true,
+              file: filename,
+              path: snapshotStream, // v8.writeHeapSnapshot returns the filepath
+              sizeHint: "Check .tinyflow-snapshots/ for the file",
+            });
+
+            console.log(`[TinyFlow] Heap snapshot written: ${snapshotStream}`);
           } catch (error) {
             const message =
               error instanceof Error ? error.message : "Unknown error";
