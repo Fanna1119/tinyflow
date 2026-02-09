@@ -140,7 +140,7 @@ function generateBundlePackageJson(
     name: `tinyflow-bundle-${workflowName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     version: "1.0.0",
     private: true,
-    description: `TinyFlow bundle – ${workflowName}`,
+    description: `TinyFlow bundle - ${workflowName}`,
     dependencies,
   };
   return JSON.stringify(pkg, null, 2) + "\n";

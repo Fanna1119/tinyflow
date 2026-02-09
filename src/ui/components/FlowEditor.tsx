@@ -211,7 +211,7 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
             onStepClick={(nodeId) => actions.selectNode(nodeId)}
             stepMode={debugState.stepMode}
             onToggleStepMode={debugActions.toggleStepMode}
-            isPaused={execution.hasPendingSteps && debugState.stepMode}
+            isPaused={execution.isPaused}
             onNextStep={execution.step}
           />
         </div>

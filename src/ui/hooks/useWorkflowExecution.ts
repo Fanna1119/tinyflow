@@ -1,11 +1,19 @@
 /**
  * Workflow Execution Hook
- * Handles running workflows with step-by-step support
+ * Handles running workflows with server-side step-by-step support
+ *
+ * When stepMode is enabled, execution actually pauses on the server before
+ * each node. The user clicks "Next" which sends a POST /api/debug-step to
+ * resume. This gives true interactive debugging with live feedback.
  */
 
 import { useCallback, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { executeWorkflowOnServer } from "../utils/serverApi";
+import {
+  executeWorkflowOnServer,
+  debugStepResume,
+  debugStopSession,
+} from "../utils/serverApi";
 import type { WorkflowDefinition } from "../../schema/types";
 import type { MockValue } from "../../compiler";
 
@@ -14,19 +22,6 @@ interface DebugActions {
   endSession: (success: boolean) => void;
   onNodeStart: (nodeId: string, params: Record<string, unknown>) => void;
   onNodeComplete: (nodeId: string, success: boolean, output: unknown) => void;
-}
-
-interface ExecutionEvent {
-  type: "start" | "complete";
-  nodeId: string;
-  params?: Record<string, unknown>;
-  success?: boolean;
-  output?: unknown;
-}
-
-interface ExecutionResult {
-  success: boolean;
-  duration: number;
 }
 
 interface UseWorkflowExecutionOptions {
@@ -40,38 +35,11 @@ export function useWorkflowExecution({
   stepMode,
   getMockValues,
 }: UseWorkflowExecutionOptions) {
-  const [hasPendingSteps, setHasPendingSteps] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [lastDuration, setLastDuration] = useState<number | undefined>();
 
-  // Store for step-by-step playback
-  const pendingEventsRef = useRef<ExecutionEvent[]>([]);
-  const executionResultRef = useRef<ExecutionResult | null>(null);
-
-  // Process next step in step mode
-  const processNextEvent = useCallback(() => {
-    if (pendingEventsRef.current.length === 0) {
-      setHasPendingSteps(false);
-      // End session with stored result
-      if (executionResultRef.current) {
-        debugActions.endSession(executionResultRef.current.success);
-        setLastDuration(executionResultRef.current.duration);
-        executionResultRef.current = null;
-      }
-      return false;
-    }
-
-    const event = pendingEventsRef.current.shift()!;
-    if (event.type === "start") {
-      debugActions.onNodeStart(event.nodeId, event.params || {});
-    } else {
-      debugActions.onNodeComplete(event.nodeId, event.success!, event.output);
-    }
-
-    // Update pending state
-    setHasPendingSteps(pendingEventsRef.current.length > 0);
-
-    return pendingEventsRef.current.length > 0;
-  }, [debugActions]);
+  /** The server-side debug session ID (only in step mode) */
+  const sessionIdRef = useRef<string | null>(null);
 
   // Execute workflow mutation
   const executeMutation = useMutation({
@@ -91,80 +59,52 @@ export function useWorkflowExecution({
         }
       }
 
-      if (isStepMode) {
-        // Step mode: collect all events first, then play back one by one
-        const collectedEvents: ExecutionEvent[] = [];
-
-        const result = await executeWorkflowOnServer(workflow, {
-          mockValues:
-            Object.keys(mockValuesObj).length > 0 ? mockValuesObj : undefined,
-          callbacks: {
-            onNodeStart: (nodeId, params) => {
-              collectedEvents.push({ type: "start", nodeId, params });
-            },
-            onNodeComplete: (nodeId, success, output) => {
-              collectedEvents.push({
-                type: "complete",
-                nodeId,
-                success,
-                output,
-              });
-            },
-            onError: (nodeId, error) => {
-              console.error(`Error in "${nodeId}": ${error}`);
-            },
+      // Both step-mode and normal mode use the same SSE streaming endpoint.
+      // In step mode, the server pauses before each node and sends a
+      // "paused" event; the client calls POST /api/debug-step to resume.
+      const result = await executeWorkflowOnServer(workflow, {
+        mockValues:
+          Object.keys(mockValuesObj).length > 0 ? mockValuesObj : undefined,
+        stepMode: isStepMode,
+        callbacks: {
+          onSession: (sessionId) => {
+            sessionIdRef.current = sessionId;
           },
-        });
-
-        return { result, collectedEvents, isStepMode: true };
-      } else {
-        // Normal mode: show events in real-time
-        const result = await executeWorkflowOnServer(workflow, {
-          mockValues:
-            Object.keys(mockValuesObj).length > 0 ? mockValuesObj : undefined,
-          callbacks: {
-            onNodeStart: (nodeId, params) => {
-              debugActions.onNodeStart(nodeId, params);
-            },
-            onNodeComplete: (nodeId, success, output) => {
-              debugActions.onNodeComplete(nodeId, success, output);
-            },
-            onError: (nodeId, error) => {
-              console.error(`Error in "${nodeId}": ${error}`);
-            },
+          onPaused: () => {
+            // Server is now paused before this node — update UI
+            setIsPaused(true);
           },
-        });
+          onStopped: () => {
+            setIsPaused(false);
+            sessionIdRef.current = null;
+          },
+          onNodeStart: (nodeId, params) => {
+            // Node is starting execution — show live in debugger
+            setIsPaused(false);
+            debugActions.onNodeStart(nodeId, params);
+          },
+          onNodeComplete: (nodeId, success, output) => {
+            debugActions.onNodeComplete(nodeId, success, output);
+          },
+          onError: (nodeId, error) => {
+            console.error(`Error in "${nodeId}": ${error}`);
+          },
+        },
+      });
 
-        return { result, collectedEvents: [], isStepMode: false };
-      }
+      return { result };
     },
-    onSuccess: ({ result, collectedEvents, isStepMode }) => {
-      if (isStepMode) {
-        // Store events for playback and result for later
-        pendingEventsRef.current = collectedEvents;
-        executionResultRef.current = {
-          success: result.success,
-          duration: result.duration,
-        };
-
-        if (collectedEvents.length > 0) {
-          setHasPendingSteps(true);
-          // Process first event automatically
-          processNextEvent();
-        } else {
-          // No events, end immediately
-          debugActions.endSession(result.success);
-          setLastDuration(result.duration);
-        }
-      } else {
-        debugActions.endSession(result.success);
-        setLastDuration(result.duration);
-      }
+    onSuccess: ({ result }) => {
+      setIsPaused(false);
+      sessionIdRef.current = null;
+      debugActions.endSession(result.success);
+      setLastDuration(result.duration);
     },
     onError: (error) => {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      setIsPaused(false);
+      sessionIdRef.current = null;
       debugActions.endSession(false);
-      setHasPendingSteps(false);
       console.error("Execution error:", errorMsg);
     },
   });
@@ -173,38 +113,60 @@ export function useWorkflowExecution({
   const run = useCallback(
     (workflow: WorkflowDefinition) => {
       setLastDuration(undefined);
-      setHasPendingSteps(false);
+      setIsPaused(false);
+      sessionIdRef.current = null;
 
       // Start debug session
       debugActions.startSession();
-      pendingEventsRef.current = [];
-      executionResultRef.current = null;
 
       executeMutation.mutate({ workflow, isStepMode: stepMode });
     },
     [debugActions, executeMutation, stepMode],
   );
 
-  // Handle step button click
-  const step = useCallback(() => {
-    processNextEvent();
-  }, [processNextEvent]);
+  // Handle step button click — tells the server to resume
+  const step = useCallback(async () => {
+    const sessionId = sessionIdRef.current;
+    if (!sessionId) return;
+
+    try {
+      await debugStepResume(sessionId);
+      // isPaused will be set to false when we receive the next node_start
+      // event from the SSE stream
+    } catch (error) {
+      console.error("Failed to resume step:", error);
+    }
+  }, []);
+
+  // Stop/cancel the current debug session
+  const stop = useCallback(async () => {
+    const sessionId = sessionIdRef.current;
+    if (!sessionId) return;
+
+    try {
+      await debugStopSession(sessionId);
+      setIsPaused(false);
+      sessionIdRef.current = null;
+    } catch (error) {
+      console.error("Failed to stop session:", error);
+    }
+  }, []);
 
   // Reset execution state
   const reset = useCallback(() => {
-    pendingEventsRef.current = [];
-    executionResultRef.current = null;
-    setHasPendingSteps(false);
+    setIsPaused(false);
     setLastDuration(undefined);
+    sessionIdRef.current = null;
   }, []);
 
   return {
     isRunning: executeMutation.isPending,
-    hasPendingSteps,
+    isPaused,
     lastDuration,
     error: executeMutation.error,
     run,
     step,
+    stop,
     reset,
   };
 }
