@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "src/registry"
+  ],
   "bin": {
     "tinyflow": "./src/cli/cli.ts"
   },
@@ -16,7 +19,9 @@
     "cli:build": "bun run ./src/cli/cli.ts build",
     "cli:validate": "bun run ./src/cli/cli.ts validate",
     "cli:list": "bun run ./src/cli/cli.ts list",
-    "test": "vitest"
+    "test": "vitest",
+    "add:dep": "cd src/registry && bun add",
+    "remove:dep": "cd src/registry && bun remove"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.20",

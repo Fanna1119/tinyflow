@@ -27,15 +27,26 @@ interface RunWorkflowRequest {
   workflow: WorkflowDefinition;
   env?: Record<string, string>;
   mockValues?: Record<string, MockValue>;
+  /** When true, execution pauses before each node and waits for step-resume */
+  stepMode?: boolean;
 }
 
 interface NodeEvent {
-  type: "node_start" | "node_complete" | "log" | "error" | "done";
+  type:
+    | "node_start"
+    | "node_complete"
+    | "log"
+    | "error"
+    | "done"
+    | "session"
+    | "paused"
+    | "stopped";
   nodeId?: string;
   params?: Record<string, unknown>;
   success?: boolean;
   output?: unknown;
   message?: string;
+  sessionId?: string;
   result?: {
     success: boolean;
     logs: string[];
@@ -43,6 +54,27 @@ interface NodeEvent {
     store: Record<string, unknown>;
     error?: { nodeId: string; message: string };
   };
+}
+
+// ============================================================================
+// Step-by-step Debug Session Management
+// ============================================================================
+
+interface DebugSession {
+  /** Resolve function to resume execution at the current pause point */
+  resolver: (() => void) | null;
+  /** Whether the session has been stopped/cancelled */
+  stopped: boolean;
+  /** SSE response for sending events */
+  res: ServerResponse;
+}
+
+/** Active debug sessions keyed by session ID */
+const debugSessions = new Map<string, DebugSession>();
+
+let sessionCounter = 0;
+function createSessionId(): string {
+  return `dbg_${Date.now()}_${++sessionCounter}`;
 }
 
 /**
@@ -176,10 +208,56 @@ export function tinyflowDevServer(): Plugin {
               }
             }
 
+            // Set up step-by-step session if stepMode is enabled
+            let sessionId: string | undefined;
+            let session: DebugSession | undefined;
+            let onBeforeNode: ((nodeId: string) => Promise<void>) | undefined;
+
+            if (body.stepMode) {
+              sessionId = createSessionId();
+              session = { resolver: null, stopped: false, res };
+              debugSessions.set(sessionId, session);
+
+              // Send session ID to client so it can send step-resume requests
+              sendSSE(res, { type: "session", sessionId });
+
+              // Clean up session on client disconnect
+              req.on("close", () => {
+                const s = debugSessions.get(sessionId!);
+                if (s) {
+                  s.stopped = true;
+                  // Unblock any pending pause so the runtime can exit
+                  if (s.resolver) {
+                    s.resolver();
+                    s.resolver = null;
+                  }
+                  debugSessions.delete(sessionId!);
+                }
+              });
+
+              // onBeforeNode pauses execution until the client sends a step-resume
+              onBeforeNode = (nodeId: string) => {
+                return new Promise<void>((resolve, reject) => {
+                  const s = debugSessions.get(sessionId!);
+                  if (!s || s.stopped) {
+                    reject(new Error("Debug session stopped"));
+                    return;
+                  }
+                  // Tell the client we are paused before this node
+                  sendSSE(res, { type: "paused", nodeId });
+                  // Store the resolver — POST /api/debug-step will call it
+                  s.resolver = resolve;
+                });
+              };
+
+              console.log(`[TinyFlow] Debug session started: ${sessionId}`);
+            }
+
             // Execute workflow with callbacks that stream events
             const result = await runWorkflow(body.workflow, {
               env: { ...envForRuntime, ...body.env },
               mockValues: mockValuesMap,
+              onBeforeNode,
               onNodeStart: (nodeId, params) => {
                 sendSSE(res, { type: "node_start", nodeId, params });
               },
@@ -199,6 +277,12 @@ export function tinyflowDevServer(): Plugin {
               },
             });
 
+            // Clean up debug session
+            if (sessionId) {
+              debugSessions.delete(sessionId);
+              console.log(`[TinyFlow] Debug session ended: ${sessionId}`);
+            }
+
             // Send final result
             sendSSE(res, {
               type: "done",
@@ -215,7 +299,14 @@ export function tinyflowDevServer(): Plugin {
           } catch (error) {
             const message =
               error instanceof Error ? error.message : "Unknown error";
-            sendJson(res, { error: message }, 500);
+            // If the SSE headers were already sent we can't sendJson,
+            // so try sending an SSE error event and ending the stream
+            if (res.headersSent) {
+              sendSSE(res, { type: "error", message });
+              res.end();
+            } else {
+              sendJson(res, { error: message }, 500);
+            }
           }
           return;
         }
@@ -255,6 +346,74 @@ export function tinyflowDevServer(): Plugin {
               store: Object.fromEntries(result.store.data),
               error: result.error,
             });
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Unknown error";
+            sendJson(res, { error: message }, 500);
+          }
+          return;
+        }
+
+        // POST /api/debug-step - Resume a paused debug session (advance one step)
+        if (req.method === "POST" && req.url === "/api/debug-step") {
+          try {
+            const body = await parseJsonBody<{ sessionId: string }>(req);
+            const session = debugSessions.get(body.sessionId);
+
+            if (!session) {
+              sendJson(
+                res,
+                { error: "Session not found or already ended" },
+                404,
+              );
+              return;
+            }
+
+            if (session.resolver) {
+              const resolver = session.resolver;
+              session.resolver = null;
+              resolver();
+              sendJson(res, { ok: true });
+            } else {
+              sendJson(res, { ok: true, message: "Not currently paused" });
+            }
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Unknown error";
+            sendJson(res, { error: message }, 500);
+          }
+          return;
+        }
+
+        // POST /api/debug-stop - Stop/cancel a debug session mid-run
+        if (req.method === "POST" && req.url === "/api/debug-stop") {
+          try {
+            const body = await parseJsonBody<{ sessionId: string }>(req);
+            const session = debugSessions.get(body.sessionId);
+
+            if (!session) {
+              sendJson(
+                res,
+                { error: "Session not found or already ended" },
+                404,
+              );
+              return;
+            }
+
+            // Mark stopped and unblock the paused runtime
+            session.stopped = true;
+            if (session.resolver) {
+              session.resolver();
+              session.resolver = null;
+            }
+
+            // Send stopped event to SSE stream
+            sendSSE(session.res, { type: "stopped" });
+
+            debugSessions.delete(body.sessionId);
+            console.log(`[TinyFlow] Debug session stopped: ${body.sessionId}`);
+
+            sendJson(res, { ok: true });
           } catch (error) {
             const message =
               error instanceof Error ? error.message : "Unknown error";

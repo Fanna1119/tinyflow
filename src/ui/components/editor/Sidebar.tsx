@@ -291,8 +291,11 @@ function FunctionItem({ metadata, onAdd, onDragStart }: FunctionItemProps) {
         {hasDeps && (
           <div className="mt-1 flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300">
             <Package className="w-3 h-3 mt-0.5 shrink-0" />
-            <span className="truncate" title={`bun add ${depNames!.join(" ")}`}>
-              Run: bun add {depNames!.join(" ")}
+            <span
+              className="truncate"
+              title={`bun run add:dep ${depNames!.join(" ")}`}
+            >
+              Run: bun run add:dep {depNames!.join(" ")}
             </span>
           </div>
         )}

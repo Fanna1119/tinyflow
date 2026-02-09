@@ -19,15 +19,30 @@ export interface ExecutionCallbacks {
   onNodeComplete?: (nodeId: string, success: boolean, output: unknown) => void;
   onLog?: (message: string) => void;
   onError?: (nodeId: string, message: string) => void;
+  /** Called when execution pauses before a node (step mode only) */
+  onPaused?: (nodeId: string) => void;
+  /** Called when session is established (step mode only) */
+  onSession?: (sessionId: string) => void;
+  /** Called when the session is stopped/cancelled */
+  onStopped?: () => void;
 }
 
 interface NodeEvent {
-  type: "node_start" | "node_complete" | "log" | "error" | "done";
+  type:
+    | "node_start"
+    | "node_complete"
+    | "log"
+    | "error"
+    | "done"
+    | "session"
+    | "paused"
+    | "stopped";
   nodeId?: string;
   params?: Record<string, unknown>;
   success?: boolean;
   output?: unknown;
   message?: string;
+  sessionId?: string;
   result?: ServerExecutionResult;
 }
 
@@ -42,6 +57,8 @@ export async function executeWorkflowOnServer(
   options: {
     mockValues?: Record<string, unknown>;
     callbacks?: ExecutionCallbacks;
+    /** Enable step-by-step mode — server pauses before each node */
+    stepMode?: boolean;
   } = {},
 ): Promise<ServerExecutionResult> {
   const response = await fetch("/api/run-workflow", {
@@ -52,6 +69,7 @@ export async function executeWorkflowOnServer(
     body: JSON.stringify({
       workflow,
       mockValues: options.mockValues,
+      stepMode: options.stepMode,
     }),
   });
 
@@ -86,6 +104,15 @@ export async function executeWorkflowOnServer(
           const event = JSON.parse(line.slice(6)) as NodeEvent;
 
           switch (event.type) {
+            case "session":
+              options.callbacks?.onSession?.(event.sessionId!);
+              break;
+            case "paused":
+              options.callbacks?.onPaused?.(event.nodeId!);
+              break;
+            case "stopped":
+              options.callbacks?.onStopped?.();
+              break;
             case "node_start":
               options.callbacks?.onNodeStart?.(
                 event.nodeId!,
@@ -121,6 +148,40 @@ export async function executeWorkflowOnServer(
   }
 
   return finalResult;
+}
+
+/**
+ * Resume a paused debug session (advance one step)
+ * @param sessionId The debug session ID
+ */
+export async function debugStepResume(sessionId: string): Promise<void> {
+  const response = await fetch("/api/debug-step", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to resume step");
+  }
+}
+
+/**
+ * Stop/cancel a debug session mid-run
+ * @param sessionId The debug session ID
+ */
+export async function debugStopSession(sessionId: string): Promise<void> {
+  const response = await fetch("/api/debug-stop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to stop session");
+  }
 }
 
 /**
