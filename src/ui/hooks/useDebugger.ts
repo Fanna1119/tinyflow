@@ -5,6 +5,7 @@
 
 import { useState, useCallback, useMemo, useRef } from "react";
 import type { MockValue } from "../../compiler";
+import type { NodeProfileData } from "../utils/serverApi";
 
 // ============================================================================
 // Types
@@ -36,6 +37,8 @@ export interface ExecutionStep {
   error?: string;
   /** Whether this node was mocked */
   mocked?: boolean;
+  /** Performance profile (when profiling is enabled) */
+  profile?: NodeProfileData;
 }
 
 export interface TestValue extends MockValue {
@@ -69,6 +72,8 @@ export interface DebugActions {
   onNodeStart: (nodeId: string, params: Record<string, unknown>) => void;
   /** Record node completion */
   onNodeComplete: (nodeId: string, success: boolean, output: unknown) => void;
+  /** Attach performance profile to a step */
+  onNodeProfile: (nodeId: string, profile: NodeProfileData) => void;
   /** Set test value for a node */
   setTestValue: (nodeId: string, value: MockValue | null) => void;
   /** Toggle test value enabled state */
@@ -197,6 +202,25 @@ export function useDebugger(): [DebugState, DebugActions] {
     [],
   );
 
+  // Attach performance profile to a step
+  const onNodeProfile = useCallback(
+    (nodeId: string, profile: NodeProfileData) => {
+      setSteps((prev) => {
+        const updated = [...prev];
+        // Find the most recent step for this nodeId
+        const stepIndex = updated.findLastIndex((s) => s.nodeId === nodeId);
+        if (stepIndex !== -1) {
+          updated[stepIndex] = {
+            ...updated[stepIndex],
+            profile,
+          };
+        }
+        return updated;
+      });
+    },
+    [],
+  );
+
   // Set test value for a node
   const setTestValue = useCallback(
     (nodeId: string, value: MockValue | null) => {
@@ -305,6 +329,7 @@ export function useDebugger(): [DebugState, DebugActions] {
       endSession,
       onNodeStart,
       onNodeComplete,
+      onNodeProfile,
       setTestValue,
       toggleTestValue,
       clearTestValues,
@@ -321,6 +346,7 @@ export function useDebugger(): [DebugState, DebugActions] {
       endSession,
       onNodeStart,
       onNodeComplete,
+      onNodeProfile,
       setTestValue,
       toggleTestValue,
       clearTestValues,

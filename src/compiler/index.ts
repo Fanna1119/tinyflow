@@ -21,6 +21,7 @@ export {
   type MockValue,
   type DebugCallbacks,
   type MemoryLimits,
+  type NodeProfile,
   type CompilationResult,
   type CompileOptions,
 } from "../pocketflow/compiler";

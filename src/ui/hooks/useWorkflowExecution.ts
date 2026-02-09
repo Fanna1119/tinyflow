@@ -16,23 +16,28 @@ import {
 } from "../utils/serverApi";
 import type { WorkflowDefinition } from "../../schema/types";
 import type { MockValue } from "../../compiler";
+import type { NodeProfileData } from "../utils/serverApi";
 
 interface DebugActions {
   startSession: () => void;
   endSession: (success: boolean) => void;
   onNodeStart: (nodeId: string, params: Record<string, unknown>) => void;
   onNodeComplete: (nodeId: string, success: boolean, output: unknown) => void;
+  onNodeProfile: (nodeId: string, profile: NodeProfileData) => void;
 }
 
 interface UseWorkflowExecutionOptions {
   debugActions: DebugActions;
   stepMode: boolean;
+  /** Enable per-node performance profiling */
+  profiling: boolean;
   getMockValues: () => Map<string, MockValue> | undefined;
 }
 
 export function useWorkflowExecution({
   debugActions,
   stepMode,
+  profiling,
   getMockValues,
 }: UseWorkflowExecutionOptions) {
   const [isPaused, setIsPaused] = useState(false);
@@ -66,6 +71,7 @@ export function useWorkflowExecution({
         mockValues:
           Object.keys(mockValuesObj).length > 0 ? mockValuesObj : undefined,
         stepMode: isStepMode,
+        profiling,
         callbacks: {
           onSession: (sessionId) => {
             sessionIdRef.current = sessionId;
@@ -85,6 +91,9 @@ export function useWorkflowExecution({
           },
           onNodeComplete: (nodeId, success, output) => {
             debugActions.onNodeComplete(nodeId, success, output);
+          },
+          onNodeProfile: (nodeId, profile) => {
+            debugActions.onNodeProfile(nodeId, profile);
           },
           onError: (nodeId, error) => {
             console.error(`Error in "${nodeId}": ${error}`);

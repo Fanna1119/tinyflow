@@ -43,6 +43,7 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
   const [showBundleModal, setShowBundleModal] = useState(false);
   const [editorSettings, setEditorSettings] =
     useState<TinyFlowSettings>(DEFAULT_SETTINGS);
+  const [profilingEnabled, setProfilingEnabled] = useState(false);
 
   // File operations hook
   const fileOps = useFileOperations({
@@ -62,8 +63,10 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
       endSession: debugActions.endSession,
       onNodeStart: debugActions.onNodeStart,
       onNodeComplete: debugActions.onNodeComplete,
+      onNodeProfile: debugActions.onNodeProfile,
     },
     stepMode: debugState.stepMode,
+    profiling: profilingEnabled,
     getMockValues: debugActions.getMockValues,
   });
 
@@ -213,6 +216,8 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
             onToggleStepMode={debugActions.toggleStepMode}
             isPaused={execution.isPaused}
             onNextStep={execution.step}
+            profilingEnabled={profilingEnabled}
+            onToggleProfiling={() => setProfilingEnabled((p) => !p)}
           />
         </div>
       </div>

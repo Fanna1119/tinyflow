@@ -25,12 +25,30 @@ export interface ExecutionCallbacks {
   onSession?: (sessionId: string) => void;
   /** Called when the session is stopped/cancelled */
   onStopped?: () => void;
+  /** Called with per-node performance profile (when profiling is enabled) */
+  onNodeProfile?: (nodeId: string, profile: NodeProfileData) => void;
+}
+
+/** Performance profile data received from the server */
+export interface NodeProfileData {
+  nodeId: string;
+  durationMs: number;
+  heapUsedBefore: number;
+  heapUsedAfter: number;
+  heapDelta: number;
+  rssBefore: number;
+  rssAfter: number;
+  cpuUserUs: number;
+  cpuSystemUs: number;
+  cpuPercent: number;
+  timestamp: number;
 }
 
 interface NodeEvent {
   type:
     | "node_start"
     | "node_complete"
+    | "node_profile"
     | "log"
     | "error"
     | "done"
@@ -43,6 +61,7 @@ interface NodeEvent {
   output?: unknown;
   message?: string;
   sessionId?: string;
+  profile?: NodeProfileData;
   result?: ServerExecutionResult;
 }
 
@@ -59,6 +78,8 @@ export async function executeWorkflowOnServer(
     callbacks?: ExecutionCallbacks;
     /** Enable step-by-step mode — server pauses before each node */
     stepMode?: boolean;
+    /** Enable per-node performance profiling */
+    profiling?: boolean;
   } = {},
 ): Promise<ServerExecutionResult> {
   const response = await fetch("/api/run-workflow", {
@@ -70,6 +91,7 @@ export async function executeWorkflowOnServer(
       workflow,
       mockValues: options.mockValues,
       stepMode: options.stepMode,
+      profiling: options.profiling,
     }),
   });
 
@@ -125,6 +147,14 @@ export async function executeWorkflowOnServer(
                 event.success!,
                 event.output,
               );
+              break;
+            case "node_profile":
+              if (event.profile) {
+                options.callbacks?.onNodeProfile?.(
+                  event.nodeId!,
+                  event.profile,
+                );
+              }
               break;
             case "log":
               options.callbacks?.onLog?.(event.message!);
@@ -182,6 +212,29 @@ export async function debugStopSession(sessionId: string): Promise<void> {
     const error = await response.json();
     throw new Error(error.error || "Failed to stop session");
   }
+}
+
+/**
+ * Request an on-demand heap snapshot from the server
+ * @returns Snapshot info including filename and path
+ */
+export async function requestHeapSnapshot(): Promise<{
+  success: boolean;
+  file: string;
+  path: string;
+}> {
+  const response = await fetch("/api/debug-snapshot", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to take snapshot");
+  }
+
+  return response.json();
 }
 
 /**

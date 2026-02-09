@@ -13,10 +13,11 @@ import {
   type CompilationResult,
   type MockValue,
   type DebugCallbacks,
+  type NodeProfile,
 } from "../compiler";
 
-// Re-export MockValue for convenience
-export type { MockValue } from "../compiler";
+// Re-export MockValue and NodeProfile for convenience
+export type { MockValue, NodeProfile } from "../compiler";
 
 // ============================================================================
 // Execution Types
@@ -41,6 +42,10 @@ export interface ExecutionOptions {
   mockValues?: Map<string, MockValue>;
   /** Memory limits for execution */
   memoryLimits?: import("../compiler").MemoryLimits;
+  /** Enable per-node performance profiling (time, memory, CPU) */
+  profiling?: boolean;
+  /** Callback with per-node performance profile (only when profiling is enabled) */
+  onNodeProfile?: (nodeId: string, profile: NodeProfile) => void;
 }
 
 export interface ExecutionResult {
@@ -132,11 +137,82 @@ export class Runtime {
 
     const startTime = performance.now();
 
+    // Per-node profiling state (only allocated when profiling is enabled)
+    const profilingSnapshots = options.profiling
+      ? new Map<
+          string,
+          {
+            t0: number;
+            heap0: number;
+            rss0: number;
+            cpu0: { user: number; system: number };
+          }
+        >()
+      : null;
+
+    // Wrap onNodeStart to capture pre-execution metrics
+    const wrappedOnNodeStart = (
+      nodeId: string,
+      params: Record<string, unknown>,
+    ) => {
+      if (profilingSnapshots) {
+        const mem = process.memoryUsage();
+        profilingSnapshots.set(nodeId, {
+          t0: performance.now(),
+          heap0: mem.heapUsed,
+          rss0: mem.rss,
+          cpu0: process.cpuUsage(),
+        });
+      }
+      options.onNodeStart?.(nodeId, params);
+    };
+
+    // Wrap onNodeComplete to capture post-execution metrics and emit profile
+    const wrappedOnNodeComplete = (
+      nodeId: string,
+      success: boolean,
+      output: unknown,
+    ) => {
+      if (profilingSnapshots) {
+        const snap = profilingSnapshots.get(nodeId);
+        if (snap) {
+          const t1 = performance.now();
+          const mem = process.memoryUsage();
+          const cpu1 = process.cpuUsage();
+          const durationMs = t1 - snap.t0;
+          const cpuUserUs = cpu1.user - snap.cpu0.user;
+          const cpuSystemUs = cpu1.system - snap.cpu0.system;
+          const cpuTimeMs = (cpuUserUs + cpuSystemUs) / 1000;
+          const cpuPercent =
+            durationMs > 0 ? (cpuTimeMs / durationMs) * 100 : 0;
+
+          const profile: NodeProfile = {
+            nodeId,
+            durationMs,
+            heapUsedBefore: snap.heap0,
+            heapUsedAfter: mem.heapUsed,
+            heapDelta: mem.heapUsed - snap.heap0,
+            rssBefore: snap.rss0,
+            rssAfter: mem.rss,
+            cpuUserUs,
+            cpuSystemUs,
+            cpuPercent: Math.round(cpuPercent * 100) / 100,
+            timestamp: Date.now(),
+          };
+
+          profilingSnapshots.delete(nodeId);
+          options.onNodeProfile?.(nodeId, profile);
+        }
+      }
+      options.onNodeComplete?.(nodeId, success, output);
+    };
+
     // Set up debug callbacks
     const debugCallbacks: DebugCallbacks = {
       onBeforeNode: options.onBeforeNode,
-      onNodeStart: options.onNodeStart,
-      onNodeComplete: options.onNodeComplete,
+      onNodeStart: wrappedOnNodeStart,
+      onNodeComplete: wrappedOnNodeComplete,
+      onNodeProfile: options.onNodeProfile,
     };
 
     // Create store with initial data, environment, mock values, and debug callbacks
