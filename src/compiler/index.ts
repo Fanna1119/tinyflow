@@ -16,6 +16,9 @@ export {
   compileWorkflowFromJson,
   createSharedStore,
   createStore,
+  getClusterOutputs,
+  getClusterNodeOutput,
+  getAllClusterOutputs,
   type SharedStore,
   type CompiledStore,
   type MockValue,
@@ -24,6 +27,7 @@ export {
   type NodeProfile,
   type CompilationResult,
   type CompileOptions,
+  type ClusterOutputs,
 } from "../pocketflow/compiler";
 
 // Also export PocketFlow primitives for advanced usage
@@ -35,6 +39,3 @@ export {
   createNode,
   createCluster,
 } from "../pocketflow/nodes";
-
-// Legacy export for backward compatibility
-export { ClusterRootNode } from "./clusterNode";

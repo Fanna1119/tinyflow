@@ -3,11 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  compileWorkflow,
-  compileWorkflowFromJson,
-  createStore,
-} from "../compiler";
+import { compileWorkflow, compileWorkflowFromJson, createStore } from "..";
 import type { WorkflowDefinition } from "../../schema/types";
 
 // ============================================================================

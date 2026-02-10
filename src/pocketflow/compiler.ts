@@ -151,25 +151,42 @@ class ClusterNode extends TinyFlowNode {
       return rootResult;
     }
 
-    // Then execute all sub-nodes in parallel
+    // Then execute all sub-nodes
     if (this.subNodeConfigs.length > 0) {
       const shared = (this as any)._shared as SharedStore;
 
+      // Check if we're in step mode (debugger) - indicated by onBeforeNode callback
+      const isStepMode =
+        typeof shared.debugCallbacks?.onBeforeNode === "function";
+
       shared.logs.push(
-        `[${config.id}] Executing ${this.subNodeConfigs.length} sub-nodes in parallel`,
+        `[${config.id}] Executing ${this.subNodeConfigs.length} sub-nodes ${isStepMode ? "sequentially (step mode)" : "in parallel"}`,
       );
 
-      const subResults = await Promise.all(
-        this.subNodeConfigs.map((subConfig) =>
-          this.executeSubNode(subConfig, shared),
-        ),
-      );
-
-      // Store combined outputs
       const outputs: Record<string, unknown> = {};
-      for (const { nodeId, result } of subResults) {
-        outputs[nodeId] = result.output;
+
+      if (isStepMode) {
+        // Sequential execution for step-by-step debugging
+        for (const subConfig of this.subNodeConfigs) {
+          const { nodeId, result } = await this.executeSubNode(
+            subConfig,
+            shared,
+          );
+          outputs[nodeId] = result.output;
+        }
+      } else {
+        // Parallel execution
+        const subResults = await Promise.all(
+          this.subNodeConfigs.map((subConfig) =>
+            this.executeSubNode(subConfig, shared),
+          ),
+        );
+
+        for (const { nodeId, result } of subResults) {
+          outputs[nodeId] = result.output;
+        }
       }
+
       shared.data.set("_clusterOutputs", { [config.id]: outputs });
     }
 
@@ -408,4 +425,52 @@ export function createStore(
     debugCallbacks,
     memoryLimits,
   });
+}
+
+// ============================================================================
+// Cluster Output Helpers
+// ============================================================================
+
+/**
+ * Result from executing a cluster's sub-nodes
+ */
+export interface ClusterOutputs {
+  [nodeId: string]: unknown;
+}
+
+/**
+ * Helper to get cluster outputs from the store
+ * Returns the outputs of all sub-nodes for a given cluster
+ */
+export function getClusterOutputs(
+  store: CompiledStore,
+  clusterId: string,
+): ClusterOutputs | undefined {
+  const clusterOutputs = store.data.get("_clusterOutputs") as
+    | Record<string, ClusterOutputs>
+    | undefined;
+  return clusterOutputs?.[clusterId];
+}
+
+/**
+ * Helper to get a specific sub-node's output from a cluster
+ */
+export function getClusterNodeOutput(
+  store: CompiledStore,
+  clusterId: string,
+  nodeId: string,
+): unknown | undefined {
+  const outputs = getClusterOutputs(store, clusterId);
+  return outputs?.[nodeId];
+}
+
+/**
+ * Helper to get all cluster outputs from the store
+ */
+export function getAllClusterOutputs(
+  store: CompiledStore,
+): Record<string, ClusterOutputs> {
+  return (
+    (store.data.get("_clusterOutputs") as Record<string, ClusterOutputs>) ?? {}
+  );
 }

@@ -1,0 +1,135 @@
+{
+  "$schema": "./workflow.schema.json",
+  "id": "cluster-with-edges-demo",
+  "name": "Cluster with Sub-Node Edges",
+  "description": "Demonstrates sub-nodes with internal edges for ordered execution within a cluster. Fetches a post, then its comments, then enriches with author data.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {},
+      "position": { "x": 0, "y": 200 }
+    },
+    {
+      "id": "set-post-id",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "postId",
+        "value": 1
+      },
+      "position": { "x": 200, "y": 200 }
+    },
+    {
+      "id": "enrich-cluster",
+      "functionId": "core.log",
+      "params": {
+        "message": "Starting post enrichment pipeline",
+        "maxConcurrency": 5
+      },
+      "position": { "x": 400, "y": 200 },
+      "nodeType": "clusterRoot",
+      "handles": [
+        { "id": "handle-fetch-post", "type": "source", "label": "Fetch Post", "position": "bottom" },
+        { "id": "handle-fetch-comments", "type": "source", "label": "Fetch Comments", "position": "bottom" },
+        { "id": "handle-fetch-author", "type": "source", "label": "Fetch Author", "position": "bottom" },
+        { "id": "handle-count-comments", "type": "source", "label": "Count Comments", "position": "bottom" }
+      ]
+    },
+    {
+      "id": "fetch-post",
+      "functionId": "http.request",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/{{postId}}",
+        "method": "GET",
+        "outputKey": "post"
+      },
+      "position": { "x": 350, "y": 350 },
+      "nodeType": "subNode",
+      "parentId": "enrich-cluster"
+    },
+    {
+      "id": "fetch-comments",
+      "functionId": "http.request",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts/{{postId}}/comments",
+        "method": "GET",
+        "outputKey": "comments"
+      },
+      "position": { "x": 550, "y": 350 },
+      "nodeType": "subNode",
+      "parentId": "enrich-cluster"
+    },
+    {
+      "id": "fetch-author",
+      "functionId": "http.request",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/users/{{post.userId}}",
+        "method": "GET",
+        "outputKey": "author"
+      },
+      "position": { "x": 450, "y": 480 },
+      "nodeType": "subNode",
+      "parentId": "enrich-cluster"
+    },
+    {
+      "id": "count-comments",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "commentCount",
+        "value": "{{comments.length}}"
+      },
+      "position": { "x": 750, "y": 350 },
+      "nodeType": "subNode",
+      "parentId": "enrich-cluster"
+    },
+    {
+      "id": "build-summary",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "enrichedPost",
+        "value": {
+          "postId": "{{postId}}",
+          "title": "{{post.title}}",
+          "authorName": "{{author.name}}",
+          "authorEmail": "{{author.email}}",
+          "commentCount": "{{commentCount}}"
+        }
+      },
+      "position": { "x": 600, "y": 200 }
+    },
+    {
+      "id": "log-result",
+      "functionId": "core.log",
+      "params": {
+        "message": "Enriched post: {{enrichedPost.title}} by {{enrichedPost.authorName}} with {{enrichedPost.commentCount}} comments"
+      },
+      "position": { "x": 800, "y": 200 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {},
+      "position": { "x": 1000, "y": 200 }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "set-post-id", "action": "default" },
+    { "from": "set-post-id", "to": "enrich-cluster", "action": "default" },
+    
+    { "from": "enrich-cluster", "to": "fetch-post", "action": "default", "sourceHandle": "handle-fetch-post", "edgeType": "subnode" },
+    { "from": "enrich-cluster", "to": "fetch-comments", "action": "default", "sourceHandle": "handle-fetch-comments", "edgeType": "subnode" },
+    { "from": "enrich-cluster", "to": "fetch-author", "action": "default", "sourceHandle": "handle-fetch-author", "edgeType": "subnode" },
+    { "from": "enrich-cluster", "to": "count-comments", "action": "default", "sourceHandle": "handle-count-comments", "edgeType": "subnode" },
+    
+    { "from": "fetch-post", "to": "fetch-author", "action": "default" },
+    { "from": "fetch-comments", "to": "count-comments", "action": "default" },
+    
+    { "from": "enrich-cluster", "to": "build-summary", "action": "default", "sourceHandle": "right" },
+    { "from": "build-summary", "to": "log-result", "action": "default" },
+    { "from": "log-result", "to": "end", "action": "default" }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  }
+}

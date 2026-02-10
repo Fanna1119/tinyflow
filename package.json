@@ -20,6 +20,7 @@
     "cli:validate": "bun run ./src/cli/cli.ts validate",
     "cli:list": "bun run ./src/cli/cli.ts list",
     "test": "vitest",
+    "coverage": "vitest run --coverage",
     "add:dep": "cd src/registry && bun add",
     "remove:dep": "cd src/registry && bun remove"
   },
@@ -36,6 +37,8 @@
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "@vitest/coverage-v8": "4.0.18",
+    "@vitest/ui": "^4.0.18",
     "@xyflow/react": "^12.10.0",
     "ajv": "^8.17.1",
     "esbuild": "^0.27.2",

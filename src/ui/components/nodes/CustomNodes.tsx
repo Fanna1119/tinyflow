@@ -206,8 +206,8 @@ ErrorNode.displayName = "ErrorNode";
 
 // Default handles for cluster root nodes
 const DEFAULT_CLUSTER_HANDLES: NodeHandle[] = [
-  { id: "a", type: "source", label: "A" },
-  { id: "b", type: "source", label: "B" },
+  { id: "a", type: "source", label: "A", position: "bottom" },
+  { id: "b", type: "source", label: "B", position: "bottom" },
 ];
 
 // Handle colors for visual differentiation
@@ -226,7 +226,7 @@ export const ClusterRootNode = memo(({ data, selected }: NodeProps) => {
 
   // Get handles from node data or use defaults
   const subNodeHandles = (nodeData.handles ?? DEFAULT_CLUSTER_HANDLES).filter(
-    (h) => h.type === "source",
+    (h) => h.type === "source" && (h.position ?? "bottom") === "bottom",
   );
 
   // Calculate handle positions evenly spaced along the bottom edge

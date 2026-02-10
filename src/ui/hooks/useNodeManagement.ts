@@ -49,13 +49,16 @@ export function useNodeManagement(
   setIsDirty: (dirty: boolean) => void,
   isImportingRef: React.MutableRefObject<boolean>,
 ): NodeManagementActions {
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setNodes((nds) => applyNodeChanges(changes, nds));
-    // Don't mark dirty during import (React Flow fires changes for dimensions/positions)
-    if (!isImportingRef.current) {
-      setIsDirty(true);
-    }
-  }, [setNodes, setIsDirty, isImportingRef]);
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      setNodes((nds) => applyNodeChanges(changes, nds));
+      // Don't mark dirty during import (React Flow fires changes for dimensions/positions)
+      if (!isImportingRef.current) {
+        setIsDirty(true);
+      }
+    },
+    [setNodes, setIsDirty, isImportingRef],
+  );
 
   const addNode = useCallback(
     (functionId: string, position = { x: 100, y: 100 }) => {
@@ -146,7 +149,12 @@ export function useNodeManagement(
                   ...n.data,
                   nodeType: "clusterRoot" as NodeType,
                   handles: [
-                    { id: "default", type: "source", label: "Default" },
+                    {
+                      id: "default",
+                      type: "source",
+                      label: "Default",
+                      position: "bottom",
+                    },
                   ] as NodeHandle[],
                 },
               }
@@ -192,7 +200,10 @@ export function useNodeManagement(
               ...n,
               data: {
                 ...n.data,
-                handles: [...handles, { id: handleId, type: "source", label }],
+                handles: [
+                  ...handles,
+                  { id: handleId, type: "source", label, position: "bottom" },
+                ],
               },
             };
           }
