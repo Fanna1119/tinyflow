@@ -39,7 +39,9 @@ function isClusterBottomHandle(
   // Any other source handle on a clusterRoot is a bottom sub-node handle
   const handles = sourceNode.data?.handles as NodeHandle[] | undefined;
   if (!handles) return false;
-  return handles.some((h) => h.id === sourceHandleId);
+  return handles.some(
+    (h) => h.id === sourceHandleId && (h.position ?? "bottom") === "bottom",
+  );
 }
 
 /**

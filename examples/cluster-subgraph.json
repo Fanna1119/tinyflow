@@ -1,0 +1,247 @@
+{
+  "id": "cluster-subgraph-demo",
+  "name": "Cluster Subgraph Demo",
+  "description": "Demonstrates cluster nodes with sub-node edges, isolated stores, and configurable concurrency using JSONPlaceholder API",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {},
+      "position": {
+        "x": -60,
+        "y": 80
+      },
+      "label": "core.start"
+    },
+    {
+      "id": "set-user-id",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "userId",
+        "value": 1
+      },
+      "position": {
+        "x": 160,
+        "y": 100
+      },
+      "label": "core.setValue"
+    },
+    {
+      "id": "fetch-cluster",
+      "functionId": "core.log",
+      "params": {
+        "message": "Starting parallel API fetches for user data enrichment",
+        "maxConcurrency": 3
+      },
+      "position": {
+        "x": 320,
+        "y": 40
+      },
+      "label": "core.log",
+      "nodeType": "clusterRoot",
+      "handles": [
+        {
+          "id": "handle-fetch-user",
+          "type": "source",
+          "label": "Fetch User",
+          "position": "bottom"
+        },
+        {
+          "id": "handle-fetch-posts",
+          "type": "source",
+          "label": "Fetch Posts",
+          "position": "bottom"
+        },
+        {
+          "id": "handle-fetch-todos",
+          "type": "source",
+          "label": "Fetch Todos",
+          "position": "bottom"
+        },
+        {
+          "id": "handle-fetch-albums",
+          "type": "source",
+          "label": "Fetch Albums",
+          "position": "bottom"
+        }
+      ]
+    },
+    {
+      "id": "fetch-user",
+      "functionId": "http.request",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/users/{{userId}}",
+        "method": "GET",
+        "outputKey": "user"
+      },
+      "position": {
+        "x": 300,
+        "y": 400
+      },
+      "label": "http.request",
+      "nodeType": "subNode",
+      "parentId": "fetch-cluster"
+    },
+    {
+      "id": "fetch-posts",
+      "functionId": "http.request",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/posts?userId={{userId}}",
+        "method": "GET",
+        "outputKey": "posts"
+      },
+      "position": {
+        "x": 480,
+        "y": 480
+      },
+      "label": "http.request",
+      "nodeType": "subNode",
+      "parentId": "fetch-cluster"
+    },
+    {
+      "id": "fetch-todos",
+      "functionId": "http.request",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/todos?userId={{userId}}",
+        "method": "GET",
+        "outputKey": "todos"
+      },
+      "position": {
+        "x": 700,
+        "y": 500
+      },
+      "label": "http.request",
+      "nodeType": "subNode",
+      "parentId": "fetch-cluster"
+    },
+    {
+      "id": "fetch-albums",
+      "functionId": "http.request",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/albums?userId={{userId}}",
+        "method": "GET",
+        "outputKey": "albums"
+      },
+      "position": {
+        "x": 880,
+        "y": 420
+      },
+      "label": "http.request",
+      "nodeType": "subNode",
+      "parentId": "fetch-cluster"
+    },
+    {
+      "id": "aggregate-results",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "userProfile",
+        "value": {
+          "fetchedAt": "{{$now}}",
+          "source": "jsonplaceholder"
+        }
+      },
+      "position": {
+        "x": 780,
+        "y": 20
+      },
+      "label": "core.setValue"
+    },
+    {
+      "id": "log-summary",
+      "functionId": "core.log",
+      "params": {
+        "message": "User profile enrichment complete"
+      },
+      "position": {
+        "x": 900,
+        "y": 200
+      },
+      "label": "core.log"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {},
+      "position": {
+        "x": 1100,
+        "y": 200
+      },
+      "label": "core.end"
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "set-user-id",
+      "action": "default",
+      "edgeType": "default"
+    },
+    {
+      "from": "set-user-id",
+      "to": "fetch-cluster",
+      "action": "default",
+      "edgeType": "default"
+    },
+    {
+      "from": "fetch-cluster",
+      "to": "fetch-user",
+      "action": "default",
+      "sourceHandle": "handle-fetch-user",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-cluster",
+      "to": "fetch-posts",
+      "action": "default",
+      "sourceHandle": "handle-fetch-posts",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-cluster",
+      "to": "fetch-todos",
+      "action": "default",
+      "sourceHandle": "handle-fetch-todos",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-cluster",
+      "to": "fetch-albums",
+      "action": "default",
+      "sourceHandle": "handle-fetch-albums",
+      "edgeType": "subnode"
+    },
+    {
+      "from": "fetch-cluster",
+      "to": "aggregate-results",
+      "action": "default",
+      "sourceHandle": "right",
+      "edgeType": "default"
+    },
+    {
+      "from": "aggregate-results",
+      "to": "log-summary",
+      "action": "default",
+      "edgeType": "default"
+    },
+    {
+      "from": "log-summary",
+      "to": "end",
+      "action": "default",
+      "edgeType": "default"
+    },
+    {
+      "from": "fetch-cluster",
+      "to": "aggregate-results",
+      "action": "default",
+      "sourceHandle": "output",
+      "edgeType": "default"
+    }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "updatedAt": "2026-02-10T14:15:03.452Z"
+  }
+}
