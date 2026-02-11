@@ -1,0 +1,45 @@
+{
+  "id": "hello-world",
+  "name": "Hello World",
+  "description": "A simple start → set value → log → end pipeline",
+  "category": "Getting Started",
+  "icon": "Rocket",
+  "difficulty": "beginner",
+  "tags": ["starter", "simple", "beginner"],
+  "startNodeId": "start",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": { "input": { "message": "Hello" } },
+      "position": { "x": 100, "y": 200 },
+      "label": "Start"
+    },
+    {
+      "id": "set-greeting",
+      "functionId": "core.setValue",
+      "params": { "key": "greeting", "value": "Hello, TinyFlow!" },
+      "position": { "x": 350, "y": 200 },
+      "label": "Set Greeting"
+    },
+    {
+      "id": "log-greeting",
+      "functionId": "core.log",
+      "params": { "key": "greeting", "message": "The greeting is" },
+      "position": { "x": 600, "y": 200 },
+      "label": "Log Greeting"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": { "outputKey": "greeting" },
+      "position": { "x": 850, "y": 200 },
+      "label": "End"
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "set-greeting", "action": "default" },
+    { "from": "set-greeting", "to": "log-greeting", "action": "default" },
+    { "from": "log-greeting", "to": "end", "action": "default" }
+  ]
+}

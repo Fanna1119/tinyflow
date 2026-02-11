@@ -1,0 +1,36 @@
+{
+  "id": "transform-chain",
+  "name": "Transform Chain",
+  "description": "Extract → template → store — a reusable data transform sequence",
+  "icon": "Wand2",
+  "nodes": [
+    {
+      "id": "extract",
+      "functionId": "transform.map",
+      "params": { "inputKey": "data", "path": "value", "outputKey": "extracted" },
+      "position": { "x": 0, "y": 0 },
+      "label": "Extract"
+    },
+    {
+      "id": "format",
+      "functionId": "transform.template",
+      "params": {
+        "template": "Formatted: {{extracted}}",
+        "outputKey": "formatted"
+      },
+      "position": { "x": 250, "y": 0 },
+      "label": "Format"
+    },
+    {
+      "id": "store",
+      "functionId": "core.setValue",
+      "params": { "key": "output", "value": "{{formatted}}" },
+      "position": { "x": 500, "y": 0 },
+      "label": "Store Result"
+    }
+  ],
+  "edges": [
+    { "from": "extract", "to": "format", "action": "default" },
+    { "from": "format", "to": "store", "action": "default" }
+  ]
+}

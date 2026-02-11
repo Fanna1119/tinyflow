@@ -21,7 +21,7 @@ export { DebugPanel, LogPanel, NodeConfigPanel } from "./debug";
 export type { LogEntry } from "./debug";
 
 // Modal components
-export { BundleModal, SettingsModal } from "./modals";
+export { BundleModal, SettingsModal, TemplateGallery } from "./modals";
 
 // Node components
 export {

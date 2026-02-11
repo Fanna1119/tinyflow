@@ -4,8 +4,9 @@
  */
 
 import { useCallback, useState, useMemo, useEffect, useRef } from "react";
-import type { Node } from "@xyflow/react";
+import type { Node, Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { Puzzle } from "lucide-react";
 
 import { Sidebar } from "./Sidebar";
 import { Toolbar } from "./Toolbar";
@@ -14,6 +15,9 @@ import { NodeConfigPanel } from "../debug/NodeConfigPanel";
 import { DebugPanel } from "../debug/DebugPanel";
 import { SettingsModal } from "../modals/SettingsModal";
 import { BundleModal } from "../modals/BundleModal";
+import { TemplateGallery } from "../modals/TemplateGallery";
+import { SaveAsTemplateModal } from "../modals/SaveAsTemplateModal";
+import { SaveAsPatternModal } from "../modals/SaveAsPatternModal";
 import { FlowCanvas } from "../canvas/FlowCanvas";
 import { useFlowEditor } from "../../hooks/useFlowEditor";
 import { useDebugger } from "../../hooks/useDebugger";
@@ -21,6 +25,7 @@ import { useFileOperations } from "../../hooks/useFileOperations";
 import { useWorkflowExecution } from "../../hooks/useWorkflowExecution";
 import { useDataFlowAnalysis } from "../../hooks/useDataFlowAnalysis";
 import type { WorkflowDefinition } from "../../../schema/types";
+import { saveTemplate, savePattern } from "../../utils/serverApi";
 import {
   type TinyFlowSettings,
   DEFAULT_SETTINGS,
@@ -42,9 +47,19 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showBundleModal, setShowBundleModal] = useState(false);
+  const [showTemplateGallery, setShowTemplateGallery] = useState(false);
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+  const [showSavePattern, setShowSavePattern] = useState(false);
   const [editorSettings, setEditorSettings] =
     useState<TinyFlowSettings>(DEFAULT_SETTINGS);
   const [profilingEnabled, setProfilingEnabled] = useState(false);
+
+  // Selection tracking for pattern saving
+  const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
+  const [selectedEdges, setSelectedEdges] = useState<Edge[]>([]);
+
+  // Ref for sidebar pattern refresh
+  const patternsRefreshRef = useRef<(() => void) | null>(null);
 
   // Create ref for file input
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -155,6 +170,44 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
     }
   }, [actions, debugActions, execution]);
 
+  // Save current workflow as a template
+  const handleSaveAsTemplate = useCallback(
+    async (templateMeta: import("../../templates/types").WorkflowTemplate) => {
+      const workflow = actions.exportWorkflow();
+
+      const fullTemplate: import("../../templates/types").WorkflowTemplate = {
+        ...templateMeta,
+        nodes: workflow.nodes,
+        edges: workflow.edges,
+        startNodeId: workflow.flow?.startNodeId ?? workflow.nodes[0]?.id ?? "",
+      };
+
+      await saveTemplate(fullTemplate);
+      setShowSaveTemplate(false);
+    },
+    [actions],
+  );
+
+  // Handle selection changes from the canvas
+  const handleSelectionChange = useCallback(
+    ({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) => {
+      setSelectedNodes(nodes);
+      setSelectedEdges(edges);
+    },
+    [],
+  );
+
+  // Save selected nodes/edges as a reusable pattern
+  const handleSaveAsPattern = useCallback(
+    async (pattern: import("../../templates/types").WorkflowPattern) => {
+      await savePattern(pattern);
+      setShowSavePattern(false);
+      // Refresh sidebar patterns list
+      patternsRefreshRef.current?.();
+    },
+    [],
+  );
+
   // Get current workflow for bundle modal
   const currentWorkflow = useMemo(() => {
     const workflow = actions.exportWorkflow();
@@ -179,7 +232,12 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
       />
 
       {/* Sidebar */}
-      <Sidebar onAddNode={actions.addNode} />
+      <Sidebar
+        onAddNode={actions.addNode}
+        onInsertPattern={actions.insertPattern}
+        onOpenTemplates={() => setShowTemplateGallery(true)}
+        onPatternsRefreshRef={patternsRefreshRef}
+      />
 
       {/* Main content */}
       <div className="flex-1 flex flex-col">
@@ -199,6 +257,7 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
           onSettings={() => setShowSettings(true)}
           onBundle={() => setShowBundleModal(true)}
           showBundle={true}
+          onSaveAsTemplate={() => setShowSaveTemplate(true)}
         />
 
         {/* React Flow Canvas */}
@@ -212,11 +271,26 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
             onNodeClick={onNodeClick}
             onPaneClick={onPaneClick}
             onAddNode={actions.addNode}
+            onSelectionChange={handleSelectionChange}
             settings={editorSettings}
             isRunning={execution.isRunning}
             validationErrors={validationErrors}
             onDismissValidation={() => setValidationErrors([])}
           />
+
+          {/* Floating "Save as Pattern" button — visible when ≥ 1 node is selected */}
+          {selectedNodes.length > 0 && (
+            <div className="absolute top-3 left-3 z-10">
+              <button
+                onClick={() => setShowSavePattern(true)}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-full shadow-lg transition-all hover:scale-105"
+              >
+                <Puzzle className="w-4 h-4" />
+                Save {selectedNodes.length} node
+                {selectedNodes.length !== 1 ? "s" : ""} as Pattern
+              </button>
+            </div>
+          )}
 
           {/* Debug Panel */}
           <DebugPanel
@@ -299,6 +373,35 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
         isOpen={showBundleModal}
         onClose={() => setShowBundleModal(false)}
         workflows={currentWorkflow}
+      />
+
+      {/* Template Gallery */}
+      <TemplateGallery
+        isOpen={showTemplateGallery}
+        onClose={() => setShowTemplateGallery(false)}
+        onSelect={(template) => {
+          actions.loadTemplate(template);
+        }}
+      />
+
+      {/* Save As Template */}
+      <SaveAsTemplateModal
+        isOpen={showSaveTemplate}
+        onClose={() => setShowSaveTemplate(false)}
+        onSave={handleSaveAsTemplate}
+        defaultName={state.workflowMeta.name}
+        defaultDescription={state.workflowMeta.description}
+        nodeCount={state.nodes.length}
+        edgeCount={state.edges.length}
+      />
+
+      {/* Save As Pattern */}
+      <SaveAsPatternModal
+        isOpen={showSavePattern}
+        onClose={() => setShowSavePattern(false)}
+        onSave={handleSaveAsPattern}
+        selectedNodes={selectedNodes}
+        selectedEdges={selectedEdges}
       />
     </div>
   );

@@ -1,0 +1,33 @@
+{
+  "id": "error-handler",
+  "name": "Error Handler",
+  "description": "Add error handling with a fallback path",
+  "icon": "ShieldAlert",
+  "nodes": [
+    {
+      "id": "check",
+      "functionId": "control.condition",
+      "params": { "leftKey": "result", "operator": "exists" },
+      "position": { "x": 0, "y": 0 },
+      "label": "Check Result"
+    },
+    {
+      "id": "handle-error",
+      "functionId": "core.log",
+      "params": { "message": "Error occurred — applying fallback" },
+      "position": { "x": 0, "y": 180 },
+      "label": "Handle Error"
+    },
+    {
+      "id": "fallback-value",
+      "functionId": "core.setValue",
+      "params": { "key": "result", "value": { "error": false, "fallback": true } },
+      "position": { "x": 250, "y": 180 },
+      "label": "Set Fallback"
+    }
+  ],
+  "edges": [
+    { "from": "check", "to": "handle-error", "action": "error" },
+    { "from": "handle-error", "to": "fallback-value", "action": "default" }
+  ]
+}

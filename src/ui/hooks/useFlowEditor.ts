@@ -19,11 +19,13 @@ import type {
 import { useNodeManagement } from "./useNodeManagement";
 import { useEdgeManagement } from "./useEdgeManagement";
 import { useWorkflowState } from "./useWorkflowState";
+import { usePatternInsertion } from "./usePatternInsertion";
 import {
   workflowNodeToReactFlowNode,
   workflowEdgeToReactFlowEdge,
 } from "./flowEditorUtils";
 import { registry } from "../../registry";
+import type { WorkflowTemplate, WorkflowPattern } from "../templates/types";
 
 // ============================================================================
 // Types
@@ -99,6 +101,17 @@ export interface FlowEditorActions {
   getNodeType: (nodeId: string) => NodeType | undefined;
   /** Get handles for a node */
   getNodeHandles: (nodeId: string) => NodeHandle[] | undefined;
+  /** Load a complete template into the canvas (replaces content) */
+  loadTemplate: (template: WorkflowTemplate) => void;
+  /** Insert a pattern at a canvas position */
+  insertPattern: (
+    pattern: WorkflowPattern,
+    position?: { x: number; y: number },
+  ) => void;
+  /** Toggle auto-connect on/off */
+  toggleAutoConnect: () => void;
+  /** Whether auto-connect is enabled */
+  autoConnectEnabled: boolean;
 }
 
 // ============================================================================
@@ -130,6 +143,7 @@ export function useFlowEditor(
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const [autoConnectEnabled, setAutoConnectEnabled] = useState(true);
 
   const [workflowMeta, setWorkflowMeta] = useState({
     id: initialWorkflow?.id ?? "new-workflow",
@@ -143,9 +157,12 @@ export function useFlowEditor(
   const nodeManagement = useNodeManagement(
     nodes,
     setNodes,
+    edges,
+    setEdges,
     setSelectedNodeId,
     setIsDirty,
     isImportingRef,
+    autoConnectEnabled,
   );
 
   const edgeManagement = useEdgeManagement(
@@ -169,11 +186,33 @@ export function useFlowEditor(
     isImportingRef,
   );
 
+  const patternInsertion = usePatternInsertion(setNodes, setEdges, setIsDirty);
+
+  // Load a full template — replaces the entire canvas
+  const loadTemplate = (template: WorkflowTemplate) => {
+    const workflow: WorkflowDefinition = {
+      id: `workflow-${Date.now()}`,
+      name: template.name,
+      description: template.description,
+      version: "1.0.0",
+      nodes: template.nodes,
+      edges: template.edges,
+      flow: { startNodeId: template.startNodeId },
+    };
+    workflowState.importWorkflow(JSON.stringify(workflow));
+  };
+
+  const toggleAutoConnect = () => setAutoConnectEnabled((prev) => !prev);
+
   // Combine all actions
   const actions: FlowEditorActions = {
     ...nodeManagement,
     ...edgeManagement,
     ...workflowState,
+    loadTemplate,
+    insertPattern: patternInsertion.insertPattern,
+    toggleAutoConnect,
+    autoConnectEnabled,
   };
 
   // Current state
