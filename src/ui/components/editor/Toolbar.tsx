@@ -14,6 +14,7 @@ import {
   Save,
   Settings,
   Package,
+  BookmarkPlus,
 } from "lucide-react";
 
 interface ToolbarProps {
@@ -31,6 +32,7 @@ interface ToolbarProps {
   onSettings: () => void;
   onBundle?: () => void;
   showBundle?: boolean;
+  onSaveAsTemplate?: () => void;
 }
 
 export function Toolbar({
@@ -48,6 +50,7 @@ export function Toolbar({
   onSettings,
   onBundle,
   showBundle = false,
+  onSaveAsTemplate,
 }: ToolbarProps) {
   const isValid = validationErrors.length === 0;
 
@@ -110,6 +113,18 @@ export function Toolbar({
           <Download className="w-4 h-4" />
           Export
         </button>
+
+        {/* Save as Template */}
+        {onSaveAsTemplate && (
+          <button
+            onClick={onSaveAsTemplate}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+            title="Save workflow as a reusable template"
+          >
+            <BookmarkPlus className="w-4 h-4" />
+            Template
+          </button>
+        )}
 
         {/* Save */}
         {canSave && (

@@ -1,0 +1,49 @@
+{
+  "id": "http-api",
+  "name": "HTTP API Call",
+  "description": "Fetch data from an API, process the response, and output results",
+  "category": "API & HTTP",
+  "icon": "Globe",
+  "difficulty": "beginner",
+  "tags": ["api", "http", "fetch", "rest"],
+  "startNodeId": "start",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {},
+      "position": { "x": 100, "y": 200 },
+      "label": "Start"
+    },
+    {
+      "id": "fetch-data",
+      "functionId": "http.request",
+      "params": {
+        "url": "https://jsonplaceholder.typicode.com/todos/1",
+        "method": "GET",
+        "outputKey": "apiResponse"
+      },
+      "position": { "x": 350, "y": 200 },
+      "label": "Fetch Data"
+    },
+    {
+      "id": "log-response",
+      "functionId": "core.log",
+      "params": { "key": "apiResponse", "message": "API Response" },
+      "position": { "x": 600, "y": 200 },
+      "label": "Log Response"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": { "outputKey": "apiResponse" },
+      "position": { "x": 850, "y": 200 },
+      "label": "End"
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "fetch-data", "action": "default" },
+    { "from": "fetch-data", "to": "log-response", "action": "default" },
+    { "from": "log-response", "to": "end", "action": "default" }
+  ]
+}

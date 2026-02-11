@@ -1,0 +1,57 @@
+{
+  "id": "parallel-processing",
+  "name": "Parallel Processing",
+  "description": "Process multiple items in parallel and collect results",
+  "category": "Patterns",
+  "icon": "Layers",
+  "difficulty": "intermediate",
+  "tags": ["parallel", "batch", "concurrent", "map-reduce"],
+  "startNodeId": "start",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "input": {
+          "items": ["apple", "banana", "cherry", "date"]
+        }
+      },
+      "position": { "x": 100, "y": 200 },
+      "label": "Start"
+    },
+    {
+      "id": "parallel-process",
+      "functionId": "control.parallel",
+      "params": {
+        "array": ["apple", "banana", "cherry", "date"],
+        "processorFunction": "transform.template",
+        "processorParams": {
+          "template": "Processed: {{currentItem}}",
+          "outputKey": "_temp"
+        },
+        "outputKey": "results"
+      },
+      "position": { "x": 400, "y": 200 },
+      "label": "Process in Parallel"
+    },
+    {
+      "id": "log-results",
+      "functionId": "core.log",
+      "params": { "key": "results", "message": "Parallel results:" },
+      "position": { "x": 700, "y": 200 },
+      "label": "Log Results"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": { "outputKey": "results" },
+      "position": { "x": 1000, "y": 200 },
+      "label": "End"
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "parallel-process", "action": "default" },
+    { "from": "parallel-process", "to": "log-results", "action": "default" },
+    { "from": "log-results", "to": "end", "action": "default" }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "id": "data-pipeline",
+  "name": "Data Pipeline",
+  "description": "Transform data through multiple steps: set → template → log → output",
+  "category": "Data Processing",
+  "icon": "ArrowRightLeft",
+  "difficulty": "beginner",
+  "tags": ["data", "transform", "pipeline", "etl"],
+  "startNodeId": "start",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": { "input": { "name": "World", "count": 42 } },
+      "position": { "x": 100, "y": 200 },
+      "label": "Start"
+    },
+    {
+      "id": "extract-name",
+      "functionId": "transform.map",
+      "params": { "inputKey": "input", "path": "name", "outputKey": "userName" },
+      "position": { "x": 350, "y": 200 },
+      "label": "Extract Name"
+    },
+    {
+      "id": "format-greeting",
+      "functionId": "transform.template",
+      "params": {
+        "template": "Hello, {{userName}}! You have {{input.count}} items.",
+        "outputKey": "greeting"
+      },
+      "position": { "x": 600, "y": 200 },
+      "label": "Format Greeting"
+    },
+    {
+      "id": "log-output",
+      "functionId": "core.log",
+      "params": { "key": "greeting", "message": "Formatted:" },
+      "position": { "x": 850, "y": 200 },
+      "label": "Log Output"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": { "outputKey": "greeting" },
+      "position": { "x": 1100, "y": 200 },
+      "label": "End"
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "extract-name", "action": "default" },
+    { "from": "extract-name", "to": "format-greeting", "action": "default" },
+    { "from": "format-greeting", "to": "log-output", "action": "default" },
+    { "from": "log-output", "to": "end", "action": "default" }
+  ]
+}

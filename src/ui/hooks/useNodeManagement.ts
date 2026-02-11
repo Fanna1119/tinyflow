@@ -4,10 +4,12 @@
  */
 
 import { useCallback } from "react";
-import type { Node, NodeChange } from "@xyflow/react";
+import type { Node, Edge, NodeChange } from "@xyflow/react";
 import { applyNodeChanges } from "@xyflow/react";
 import type { WorkflowNode, NodeType, NodeHandle } from "../../schema/types";
 import { registry } from "../../registry";
+import { getSmartDefaults } from "./useSmartDefaults";
+import { useAutoConnect } from "./useAutoConnect";
 
 export interface NodeManagementActions {
   /** Handle node changes from React Flow */
@@ -45,10 +47,14 @@ export interface NodeManagementActions {
 export function useNodeManagement(
   nodes: Node[],
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>,
+  edges: Edge[],
+  setEdges: React.Dispatch<React.SetStateAction<Edge[]>>,
   setSelectedNodeId: React.Dispatch<React.SetStateAction<string | null>>,
   setIsDirty: (dirty: boolean) => void,
   isImportingRef: React.MutableRefObject<boolean>,
+  autoConnectEnabled: boolean,
 ): NodeManagementActions {
+  const { maybeAutoConnect } = useAutoConnect();
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       setNodes((nds) => applyNodeChanges(changes, nds));
@@ -64,6 +70,9 @@ export function useNodeManagement(
     (functionId: string, position = { x: 100, y: 100 }) => {
       const id = `node-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
+      // Smart defaults: pre-fill params based on context
+      const smartParams = getSmartDefaults(functionId, nodes, edges) ?? {};
+
       const newNode: Node = {
         id,
         type: "function",
@@ -71,7 +80,7 @@ export function useNodeManagement(
         data: {
           label: functionId,
           functionId,
-          params: {},
+          params: smartParams,
           runtime: {},
           envs: {},
           hasError: false,
@@ -80,11 +89,32 @@ export function useNodeManagement(
         },
       };
 
-      setNodes((nds) => [...nds, newNode]);
+      setNodes((nds) => {
+        const updated = [...nds, newNode];
+
+        // Auto-connect: try to link the new node to a predecessor
+        if (autoConnectEnabled) {
+          const result = maybeAutoConnect(id, updated, edges);
+          if (result) {
+            setEdges((prevEdges) => [...prevEdges, result.edge]);
+          }
+        }
+
+        return updated;
+      });
       setSelectedNodeId(id);
       setIsDirty(true);
     },
-    [setNodes, setSelectedNodeId, setIsDirty],
+    [
+      setNodes,
+      setEdges,
+      setSelectedNodeId,
+      setIsDirty,
+      nodes,
+      edges,
+      autoConnectEnabled,
+      maybeAutoConnect,
+    ],
   );
 
   const removeNode = useCallback(

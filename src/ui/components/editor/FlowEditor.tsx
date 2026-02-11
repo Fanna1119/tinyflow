@@ -14,6 +14,8 @@ import { NodeConfigPanel } from "../debug/NodeConfigPanel";
 import { DebugPanel } from "../debug/DebugPanel";
 import { SettingsModal } from "../modals/SettingsModal";
 import { BundleModal } from "../modals/BundleModal";
+import { TemplateGallery } from "../modals/TemplateGallery";
+import { SaveAsTemplateModal } from "../modals/SaveAsTemplateModal";
 import { FlowCanvas } from "../canvas/FlowCanvas";
 import { useFlowEditor } from "../../hooks/useFlowEditor";
 import { useDebugger } from "../../hooks/useDebugger";
@@ -21,6 +23,7 @@ import { useFileOperations } from "../../hooks/useFileOperations";
 import { useWorkflowExecution } from "../../hooks/useWorkflowExecution";
 import { useDataFlowAnalysis } from "../../hooks/useDataFlowAnalysis";
 import type { WorkflowDefinition } from "../../../schema/types";
+import { saveTemplate } from "../../utils/serverApi";
 import {
   type TinyFlowSettings,
   DEFAULT_SETTINGS,
@@ -42,6 +45,8 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showBundleModal, setShowBundleModal] = useState(false);
+  const [showTemplateGallery, setShowTemplateGallery] = useState(false);
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
   const [editorSettings, setEditorSettings] =
     useState<TinyFlowSettings>(DEFAULT_SETTINGS);
   const [profilingEnabled, setProfilingEnabled] = useState(false);
@@ -155,6 +160,24 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
     }
   }, [actions, debugActions, execution]);
 
+  // Save current workflow as a template
+  const handleSaveAsTemplate = useCallback(
+    async (templateMeta: import("../../templates/types").WorkflowTemplate) => {
+      const workflow = actions.exportWorkflow();
+
+      const fullTemplate: import("../../templates/types").WorkflowTemplate = {
+        ...templateMeta,
+        nodes: workflow.nodes,
+        edges: workflow.edges,
+        startNodeId: workflow.flow?.startNodeId ?? workflow.nodes[0]?.id ?? "",
+      };
+
+      await saveTemplate(fullTemplate);
+      setShowSaveTemplate(false);
+    },
+    [actions],
+  );
+
   // Get current workflow for bundle modal
   const currentWorkflow = useMemo(() => {
     const workflow = actions.exportWorkflow();
@@ -179,7 +202,11 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
       />
 
       {/* Sidebar */}
-      <Sidebar onAddNode={actions.addNode} />
+      <Sidebar
+        onAddNode={actions.addNode}
+        onInsertPattern={actions.insertPattern}
+        onOpenTemplates={() => setShowTemplateGallery(true)}
+      />
 
       {/* Main content */}
       <div className="flex-1 flex flex-col">
@@ -199,6 +226,7 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
           onSettings={() => setShowSettings(true)}
           onBundle={() => setShowBundleModal(true)}
           showBundle={true}
+          onSaveAsTemplate={() => setShowSaveTemplate(true)}
         />
 
         {/* React Flow Canvas */}
@@ -299,6 +327,26 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
         isOpen={showBundleModal}
         onClose={() => setShowBundleModal(false)}
         workflows={currentWorkflow}
+      />
+
+      {/* Template Gallery */}
+      <TemplateGallery
+        isOpen={showTemplateGallery}
+        onClose={() => setShowTemplateGallery(false)}
+        onSelect={(template) => {
+          actions.loadTemplate(template);
+        }}
+      />
+
+      {/* Save As Template */}
+      <SaveAsTemplateModal
+        isOpen={showSaveTemplate}
+        onClose={() => setShowSaveTemplate(false)}
+        onSave={handleSaveAsTemplate}
+        defaultName={state.workflowMeta.name}
+        defaultDescription={state.workflowMeta.description}
+        nodeCount={state.nodes.length}
+        edgeCount={state.edges.length}
       />
     </div>
   );

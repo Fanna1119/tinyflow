@@ -1,0 +1,76 @@
+{
+  "id": "conditional-branch",
+  "name": "Conditional Branch",
+  "description": "Check a condition and route to different paths based on the result",
+  "category": "Control Flow",
+  "icon": "GitBranch",
+  "difficulty": "intermediate",
+  "tags": ["condition", "branch", "if-else", "decision"],
+  "startNodeId": "start",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": { "input": { "score": 75 } },
+      "position": { "x": 100, "y": 250 },
+      "label": "Start"
+    },
+    {
+      "id": "extract-score",
+      "functionId": "transform.map",
+      "params": { "inputKey": "input", "path": "score", "outputKey": "score" },
+      "position": { "x": 350, "y": 250 },
+      "label": "Extract Score"
+    },
+    {
+      "id": "check-passing",
+      "functionId": "control.condition",
+      "params": { "leftKey": "score", "operator": "gte", "rightValue": 60 },
+      "position": { "x": 600, "y": 250 },
+      "label": "Score >= 60?"
+    },
+    {
+      "id": "set-passed",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "result",
+        "value": { "status": "passed", "message": "Congratulations!" }
+      },
+      "position": { "x": 900, "y": 120 },
+      "label": "Passed ✓"
+    },
+    {
+      "id": "set-failed",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "result",
+        "value": { "status": "failed", "message": "Try again!" }
+      },
+      "position": { "x": 900, "y": 380 },
+      "label": "Failed ✗"
+    },
+    {
+      "id": "log-result",
+      "functionId": "core.log",
+      "params": { "key": "result" },
+      "position": { "x": 1150, "y": 250 },
+      "label": "Log Result"
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": { "outputKey": "result" },
+      "position": { "x": 1400, "y": 250 },
+      "label": "End"
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "extract-score", "action": "default" },
+    { "from": "extract-score", "to": "check-passing", "action": "default" },
+    { "from": "check-passing", "to": "set-passed", "action": "success" },
+    { "from": "check-passing", "to": "set-failed", "action": "error" },
+    { "from": "set-passed", "to": "log-result", "action": "default" },
+    { "from": "set-failed", "to": "log-result", "action": "default" },
+    { "from": "log-result", "to": "end", "action": "default" }
+  ]
+}

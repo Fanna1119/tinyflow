@@ -5,6 +5,7 @@
  */
 
 import type { WorkflowDefinition } from "../../schema/types";
+import type { WorkflowTemplate } from "../templates/types";
 
 export interface ServerExecutionResult {
   success: boolean;
@@ -264,4 +265,60 @@ export async function executeWorkflowSimple(
   }
 
   return response.json();
+}
+
+// ============================================================================
+// Template API
+// ============================================================================
+
+/**
+ * Fetch all templates from the server templates directory
+ * @returns Array of workflow templates
+ */
+export async function fetchTemplates(): Promise<WorkflowTemplate[]> {
+  const response = await fetch("/api/templates", { method: "GET" });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to fetch templates");
+  }
+
+  const data = await response.json();
+  return data.templates as WorkflowTemplate[];
+}
+
+/**
+ * Save a workflow template to the server templates directory
+ * @param template The template to save
+ */
+export async function saveTemplate(
+  template: WorkflowTemplate,
+): Promise<{ success: boolean; id: string }> {
+  const response = await fetch("/api/templates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(template),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to save template");
+  }
+
+  return response.json();
+}
+
+/**
+ * Delete a template from the server templates directory
+ * @param id The template ID to delete
+ */
+export async function deleteTemplate(id: string): Promise<void> {
+  const response = await fetch(`/api/templates?id=${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to delete template");
+  }
 }

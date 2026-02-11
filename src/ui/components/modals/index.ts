@@ -5,3 +5,4 @@
 
 export { BundleModal } from "./BundleModal";
 export { SettingsModal } from "./SettingsModal";
+export { TemplateGallery } from "./TemplateGallery";
