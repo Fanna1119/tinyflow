@@ -1,0 +1,16 @@
+{
+  "id": "log-and-continue",
+  "name": "Log & Continue",
+  "description": "Log a value and continue the flow",
+  "icon": "MessageSquare",
+  "nodes": [
+    {
+      "id": "log",
+      "functionId": "core.log",
+      "params": { "message": "Checkpoint reached" },
+      "position": { "x": 0, "y": 0 },
+      "label": "Log"
+    }
+  ],
+  "edges": []
+}

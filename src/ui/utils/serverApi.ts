@@ -5,7 +5,7 @@
  */
 
 import type { WorkflowDefinition } from "../../schema/types";
-import type { WorkflowTemplate } from "../templates/types";
+import type { WorkflowTemplate, WorkflowPattern } from "../templates/types";
 
 export interface ServerExecutionResult {
   success: boolean;
@@ -320,5 +320,61 @@ export async function deleteTemplate(id: string): Promise<void> {
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || "Failed to delete template");
+  }
+}
+
+// ============================================================================
+// Pattern API
+// ============================================================================
+
+/**
+ * Fetch all patterns from the server patterns directory
+ * @returns Array of workflow patterns
+ */
+export async function fetchPatterns(): Promise<WorkflowPattern[]> {
+  const response = await fetch("/api/patterns", { method: "GET" });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to fetch patterns");
+  }
+
+  const data = await response.json();
+  return data.patterns as WorkflowPattern[];
+}
+
+/**
+ * Save a workflow pattern to the server patterns directory
+ * @param pattern The pattern to save
+ */
+export async function savePattern(
+  pattern: WorkflowPattern,
+): Promise<{ success: boolean; id: string }> {
+  const response = await fetch("/api/patterns", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(pattern),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to save pattern");
+  }
+
+  return response.json();
+}
+
+/**
+ * Delete a pattern from the server patterns directory
+ * @param id The pattern ID to delete
+ */
+export async function deletePattern(id: string): Promise<void> {
+  const response = await fetch(`/api/patterns?id=${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to delete pattern");
   }
 }

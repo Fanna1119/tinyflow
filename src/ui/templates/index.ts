@@ -8,4 +8,9 @@ export type {
   WorkflowPattern,
   TemplateCategory,
 } from "./types";
-export { patterns, fetchTemplates } from "./templates";
+export {
+  fetchTemplates,
+  fetchPatterns,
+  savePattern,
+  deletePattern,
+} from "./templates";

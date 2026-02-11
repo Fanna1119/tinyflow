@@ -16,11 +16,12 @@ import {
   PanelLeftOpen,
   Puzzle,
   LayoutTemplate,
+  Loader2,
 } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import { registry } from "../../../registry";
 import type { FunctionMetadata } from "../../../schema/types";
-import { patterns } from "../../templates";
+import { fetchPatterns } from "../../templates";
 import type { WorkflowPattern } from "../../templates";
 
 const MIN_WIDTH = 200;
@@ -48,12 +49,15 @@ interface SidebarProps {
   onAddNode: (functionId: string) => void;
   onInsertPattern?: (pattern: WorkflowPattern) => void;
   onOpenTemplates?: () => void;
+  /** Called when patterns need to be refreshed (e.g. after saving a new one) */
+  onPatternsRefreshRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 export function Sidebar({
   onAddNode,
   onInsertPattern,
   onOpenTemplates,
+  onPatternsRefreshRef,
 }: SidebarProps) {
   const [search, setSearch] = useState("");
   const [collapsed, setCollapsed] = useState(false);
@@ -64,6 +68,48 @@ export function Sidebar({
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(["Core", "Transform", "Control", "HTTP"]),
   );
+
+  // Dynamic pattern loading from server
+  const [patterns, setPatterns] = useState<WorkflowPattern[]>([]);
+  const [patternsLoading, setPatternsLoading] = useState(false);
+
+  // Load patterns when the patterns tab is first activated
+  const patternsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (activeTab === "patterns" && !patternsLoadedRef.current) {
+      patternsLoadedRef.current = true;
+      setPatternsLoading(true);
+      fetchPatterns()
+        .then(setPatterns)
+        .catch((err) =>
+          console.warn("[TinyFlow] Failed to load patterns:", err),
+        )
+        .finally(() => setPatternsLoading(false));
+    }
+  }, [activeTab]);
+
+  /** Refresh patterns list (e.g. after saving a new pattern) */
+  const refreshPatterns = useCallback(() => {
+    setPatternsLoading(true);
+    fetchPatterns()
+      .then(setPatterns)
+      .catch((err) =>
+        console.warn("[TinyFlow] Failed to refresh patterns:", err),
+      )
+      .finally(() => setPatternsLoading(false));
+  }, []);
+
+  // Expose refresh to parent via ref
+  useEffect(() => {
+    if (onPatternsRefreshRef) {
+      onPatternsRefreshRef.current = refreshPatterns;
+    }
+    return () => {
+      if (onPatternsRefreshRef) {
+        onPatternsRefreshRef.current = null;
+      }
+    };
+  }, [onPatternsRefreshRef, refreshPatterns]);
 
   const functionsByCategory = useMemo(() => {
     const byCategory = registry.getMetadataByCategory();
@@ -310,13 +356,27 @@ export function Sidebar({
                 <div className="px-2 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Insert Pattern
                 </div>
-                {patterns.map((pattern) => (
-                  <PatternItem
-                    key={pattern.id}
-                    pattern={pattern}
-                    onInsert={() => onInsertPattern?.(pattern)}
-                  />
-                ))}
+                {patternsLoading ? (
+                  <div className="flex items-center justify-center py-6 text-gray-400">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  </div>
+                ) : patterns.length === 0 ? (
+                  <div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">
+                    No patterns yet.
+                    <br />
+                    <span className="text-xs">
+                      Select nodes on the canvas to save a pattern.
+                    </span>
+                  </div>
+                ) : (
+                  patterns.map((pattern) => (
+                    <PatternItem
+                      key={pattern.id}
+                      pattern={pattern}
+                      onInsert={() => onInsertPattern?.(pattern)}
+                    />
+                  ))
+                )}
               </div>
             </div>
 

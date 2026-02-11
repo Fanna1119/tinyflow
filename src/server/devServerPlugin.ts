@@ -9,7 +9,7 @@ import { loadEnv } from "vite";
 import type { IncomingMessage, ServerResponse } from "http";
 import type { WorkflowDefinition } from "../schema/types";
 import type { MockValue } from "../compiler";
-import type { WorkflowTemplate } from "../ui/templates/types";
+import type { WorkflowTemplate, WorkflowPattern } from "../ui/templates/types";
 
 // These will be dynamically imported to avoid bundling in client
 let runtimeModule: typeof import("../runtime") | null = null;
@@ -19,6 +19,9 @@ let serverEnv: Record<string, string> = {};
 
 /** Absolute path to the templates directory */
 let templatesDir: string = "";
+
+/** Absolute path to the patterns directory */
+let patternsDir: string = "";
 
 async function getRuntime() {
   if (!runtimeModule) {
@@ -623,6 +626,120 @@ export function tinyflowDevServer(): Plugin {
               error instanceof Error ? error.message : "Unknown error";
             if (message.includes("ENOENT")) {
               sendJson(res, { error: "Template not found" }, 404);
+            } else {
+              sendJson(res, { error: message }, 500);
+            }
+          }
+          return;
+        }
+
+        // ==================================================================
+        // Pattern API — CRUD for reusable sub-graph patterns
+        // ==================================================================
+
+        // GET /api/patterns - List all patterns from the patterns directory
+        if (req.method === "GET" && req.url === "/api/patterns") {
+          try {
+            const fs = await import("fs/promises");
+            const path = await import("path");
+            const dir = patternsDir || path.join(process.cwd(), "patterns");
+            patternsDir = dir;
+
+            await fs.mkdir(dir, { recursive: true });
+
+            const files = await fs.readdir(dir);
+            const jsonFiles = files.filter((f) => f.endsWith(".json"));
+
+            const patterns: WorkflowPattern[] = [];
+            for (const file of jsonFiles) {
+              try {
+                const content = await fs.readFile(
+                  path.join(dir, file),
+                  "utf-8",
+                );
+                const pattern = JSON.parse(content) as WorkflowPattern;
+                patterns.push(pattern);
+              } catch {
+                console.warn(
+                  `[TinyFlow] Skipping invalid pattern file: ${file}`,
+                );
+              }
+            }
+
+            sendJson(res, { patterns });
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Unknown error";
+            sendJson(res, { error: message }, 500);
+          }
+          return;
+        }
+
+        // POST /api/patterns - Save a new pattern
+        if (req.method === "POST" && req.url === "/api/patterns") {
+          try {
+            const fs = await import("fs/promises");
+            const path = await import("path");
+            const dir = patternsDir || path.join(process.cwd(), "patterns");
+            patternsDir = dir;
+
+            const pattern = await parseJsonBody<WorkflowPattern>(req);
+
+            if (!pattern.id || !pattern.name || !pattern.nodes) {
+              sendJson(
+                res,
+                { error: "Pattern must have id, name, and nodes" },
+                400,
+              );
+              return;
+            }
+
+            const safeId = pattern.id.replace(/[^a-zA-Z0-9_-]/g, "-");
+            const filePath = path.join(dir, `${safeId}.json`);
+
+            await fs.mkdir(dir, { recursive: true });
+            await fs.writeFile(
+              filePath,
+              JSON.stringify(pattern, null, 2),
+              "utf-8",
+            );
+
+            console.log(`[TinyFlow] Pattern saved: ${safeId}.json`);
+            sendJson(res, { success: true, id: pattern.id });
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Unknown error";
+            sendJson(res, { error: message }, 500);
+          }
+          return;
+        }
+
+        // DELETE /api/patterns?id=<pattern-id> - Remove a pattern
+        if (req.method === "DELETE" && req.url?.startsWith("/api/patterns?")) {
+          try {
+            const fs = await import("fs/promises");
+            const path = await import("path");
+            const dir = patternsDir || path.join(process.cwd(), "patterns");
+            patternsDir = dir;
+
+            const url = new URL(req.url, `http://${req.headers.host}`);
+            const id = url.searchParams.get("id");
+            if (!id) {
+              sendJson(res, { error: "Missing id parameter" }, 400);
+              return;
+            }
+
+            const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "-");
+            const filePath = path.join(dir, `${safeId}.json`);
+
+            await fs.unlink(filePath);
+            console.log(`[TinyFlow] Pattern deleted: ${safeId}.json`);
+            sendJson(res, { success: true });
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Unknown error";
+            if (message.includes("ENOENT")) {
+              sendJson(res, { error: "Pattern not found" }, 404);
             } else {
               sendJson(res, { error: message }, 500);
             }

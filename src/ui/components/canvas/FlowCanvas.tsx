@@ -16,6 +16,7 @@ import {
   type OnNodesChange,
   type OnEdgesChange,
   type OnConnect,
+  type OnSelectionChangeFunc,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -40,6 +41,7 @@ interface FlowCanvasProps {
   onPaneClick: () => void;
   onAddNode: (functionId: string, position: { x: number; y: number }) => void;
   onMoveNodeToCluster?: (nodeId: string, clusterId: string) => boolean;
+  onSelectionChange?: OnSelectionChangeFunc;
   settings: TinyFlowSettings;
   isRunning: boolean;
   validationErrors: string[];
@@ -56,6 +58,7 @@ export function FlowCanvas({
   onPaneClick,
   onAddNode,
   onMoveNodeToCluster,
+  onSelectionChange,
   settings,
   isRunning,
   validationErrors,
@@ -150,6 +153,9 @@ export function FlowCanvas({
       onInit={(instance) => {
         reactFlowInstance.current = instance;
       }}
+      onSelectionChange={onSelectionChange}
+      selectionOnDrag
+      panOnDrag={[1, 2]}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       fitView
