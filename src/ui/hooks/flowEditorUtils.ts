@@ -105,15 +105,28 @@ export function workflowEdgeToReactFlowEdge(
 }
 
 export function reactFlowNodeToWorkflowNode(node: Node): WorkflowNode {
+  // Resolve nodeType: only include non-default values in export
+  const rawNodeType = node.data.nodeType as string | undefined;
+  const nodeType: WorkflowNode["nodeType"] =
+    rawNodeType === "clusterRoot" || rawNodeType === "subNode"
+      ? rawNodeType
+      : undefined;
+
+  // Omit empty runtime/envs objects
+  const runtime = node.data.runtime as WorkflowNode["runtime"];
+  const envs = node.data.envs as Record<string, string> | undefined;
+  const hasRuntime = runtime && Object.keys(runtime).length > 0;
+  const hasEnvs = envs && Object.keys(envs).length > 0;
+
   const workflowNode: WorkflowNode = {
     id: node.id,
     functionId: node.data.functionId as string,
     params: (node.data.params as Record<string, unknown>) ?? {},
     position: node.position,
     label: node.data.label as string | undefined,
-    runtime: node.data.runtime as WorkflowNode["runtime"],
-    envs: node.data.envs as Record<string, string>,
-    nodeType: node.data.nodeType as WorkflowNode["nodeType"],
+    ...(hasRuntime ? { runtime } : {}),
+    ...(hasEnvs ? { envs } : {}),
+    ...(nodeType ? { nodeType } : {}),
     handles: node.data.handles as WorkflowNode["handles"],
     parentId: node.data.parentId as string | undefined,
   };

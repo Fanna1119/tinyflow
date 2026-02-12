@@ -84,24 +84,31 @@ export function useNodeManagement(
           runtime: {},
           envs: {},
           hasError: false,
-          nodeType: "regular",
+          nodeType: "default",
           isSubNode: false,
         },
       };
 
-      setNodes((nds) => {
-        const updated = [...nds, newNode];
+      // Add the node
+      setNodes((nds) => [...nds, newNode]);
 
-        // Auto-connect: try to link the new node to a predecessor
-        if (autoConnectEnabled) {
-          const result = maybeAutoConnect(id, updated, edges);
-          if (result) {
-            setEdges((prevEdges) => [...prevEdges, result.edge]);
-          }
+      // Auto-connect OUTSIDE setNodes to avoid duplicate edges in StrictMode
+      if (autoConnectEnabled) {
+        const allNodes = [...nodes, newNode];
+        const result = maybeAutoConnect(id, allNodes, edges);
+        if (result) {
+          setEdges((prevEdges) => {
+            // Guard against duplicates (same source → target already exists)
+            const exists = prevEdges.some(
+              (e) =>
+                e.source === result.edge.source &&
+                e.target === result.edge.target,
+            );
+            return exists ? prevEdges : [...prevEdges, result.edge];
+          });
         }
+      }
 
-        return updated;
-      });
       setSelectedNodeId(id);
       setIsDirty(true);
     },

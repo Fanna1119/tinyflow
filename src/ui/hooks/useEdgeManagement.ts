@@ -164,7 +164,16 @@ export function useEdgeManagement(
           },
         };
 
-        setEdges((eds) => addEdge(edge, eds));
+        setEdges((eds) => {
+          // Prevent duplicate sub-node edges (same source+handle → target)
+          const exists = eds.some(
+            (e) =>
+              e.source === edge.source &&
+              e.target === edge.target &&
+              e.sourceHandle === edge.sourceHandle,
+          );
+          return exists ? eds : addEdge(edge, eds);
+        });
 
         // Automatically mark the target node as a sub-node
         setNodes((nds) =>
@@ -194,7 +203,17 @@ export function useEdgeManagement(
           type: "smoothstep",
         };
 
-        setEdges((eds) => addEdge(edge, eds));
+        setEdges((eds) => {
+          // Prevent duplicate regular edges (same source → target + same action)
+          const exists = eds.some(
+            (e) =>
+              e.source === edge.source &&
+              e.target === edge.target &&
+              e.sourceHandle === edge.sourceHandle &&
+              e.type !== "subnode",
+          );
+          return exists ? eds : addEdge(edge, eds);
+        });
       }
 
       setIsDirty(true);
