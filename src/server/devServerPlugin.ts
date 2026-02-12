@@ -541,7 +541,30 @@ export function tinyflowDevServer(): Plugin {
                   path.join(dir, file),
                   "utf-8",
                 );
-                const template = JSON.parse(content) as WorkflowTemplate;
+                const raw = JSON.parse(content) as Record<string, unknown>;
+                // Normalize template: support both old format (top-level fields)
+                // and new format (metadata section + flow.startNodeId)
+                const metadata =
+                  (raw.metadata as Record<string, unknown>) ?? {};
+                const flow = (raw.flow as Record<string, unknown>) ?? {};
+                const template: WorkflowTemplate = {
+                  id: raw.id as string,
+                  name: raw.name as string,
+                  description: (raw.description as string) ?? "",
+                  category: (raw.category ??
+                    metadata.category ??
+                    "Patterns") as WorkflowTemplate["category"],
+                  icon: (raw.icon ?? metadata.icon ?? "Box") as string,
+                  difficulty: (raw.difficulty ??
+                    metadata.difficulty ??
+                    "beginner") as WorkflowTemplate["difficulty"],
+                  tags: (raw.tags ?? metadata.tags ?? []) as string[],
+                  nodes: raw.nodes as WorkflowTemplate["nodes"],
+                  edges: raw.edges as WorkflowTemplate["edges"],
+                  startNodeId: (raw.startNodeId ??
+                    flow.startNodeId ??
+                    "start") as string,
+                };
                 templates.push(template);
               } catch {
                 console.warn(

@@ -23,6 +23,7 @@ registerFunction(
     ],
     outputs: [],
     icon: "GitFork",
+    actions: ["success", "error"],
   },
   async (params, context) => {
     const leftKey = params.leftKey as string;

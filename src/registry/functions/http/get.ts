@@ -22,6 +22,7 @@ registerFunction(
     ],
     outputs: ["outputKey"],
     icon: "Download",
+    actions: ["default", "error"],
   },
   async (params, context) => {
     const url = params.url as string;
@@ -45,8 +46,8 @@ registerFunction(
 
       return {
         output: data,
-        action: response.ok ? "success" : "error",
         success: response.ok,
+        error: response.ok ? undefined : `HTTP ${response.status}`,
       };
     } catch (e) {
       const error = e instanceof Error ? e.message : "Unknown error";

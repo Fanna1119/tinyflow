@@ -25,13 +25,18 @@ registerFunction(
     const outputKey = params.outputKey as string;
 
     const result = template.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (_, path) => {
-      // First try direct store lookup
-      let value = context.store.get(path);
+      // First try params (for values passed from parallel/forEach processors)
+      let value = params[path];
 
-      // If not found, try path resolution
+      // Then try direct store lookup
+      if (value === undefined) {
+        value = context.store.get(path);
+      }
+
+      // If not found, try path resolution in params first
       if (value === undefined && path.includes(".")) {
         const [rootKey, ...rest] = path.split(".");
-        let obj = context.store.get(rootKey);
+        let obj = params[rootKey] ?? context.store.get(rootKey);
         for (const part of rest) {
           if (obj === null || obj === undefined) break;
           obj = (obj as Record<string, unknown>)[part];

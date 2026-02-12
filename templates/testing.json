@@ -2,13 +2,7 @@
   "id": "testing",
   "name": "testing",
   "description": "testing 1 2 3",
-  "category": "Control Flow",
-  "icon": "Database",
-  "difficulty": "beginner",
-  "tags": [
-    "api",
-    "cluster"
-  ],
+  "version": "1.0.0",
   "nodes": [
     {
       "id": "start",
@@ -244,5 +238,13 @@
       "edgeType": "default"
     }
   ],
-  "startNodeId": "start"
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "category": "Control Flow",
+    "icon": "Database",
+    "difficulty": "beginner",
+    "tags": ["api", "cluster"]
+  }
 }

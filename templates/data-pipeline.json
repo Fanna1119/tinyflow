@@ -2,11 +2,7 @@
   "id": "data-pipeline",
   "name": "Data Pipeline",
   "description": "Transform data through multiple steps: set → template → log → output",
-  "category": "Data Processing",
-  "icon": "ArrowRightLeft",
-  "difficulty": "beginner",
-  "tags": ["data", "transform", "pipeline", "etl"],
-  "startNodeId": "start",
+  "version": "1.0.0",
   "nodes": [
     {
       "id": "start",
@@ -52,5 +48,14 @@
     { "from": "extract-name", "to": "format-greeting", "action": "default" },
     { "from": "format-greeting", "to": "log-output", "action": "default" },
     { "from": "log-output", "to": "end", "action": "default" }
-  ]
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "category": "Data Processing",
+    "icon": "ArrowRightLeft",
+    "difficulty": "beginner",
+    "tags": ["data", "transform", "pipeline", "etl"]
+  }
 }

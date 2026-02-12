@@ -22,6 +22,7 @@ import "@xyflow/react/dist/style.css";
 
 import { nodeTypes } from "../nodes/nodeTypes";
 import { SubNodeEdge } from "../edges/SubNodeEdge";
+import { ActionEdge } from "../edges/ActionEdge";
 import { ValidationPanel } from "./ValidationPanel";
 import { RunningIndicator } from "./RunningIndicator";
 import type { TinyFlowSettings } from "../../utils/settings";
@@ -29,6 +30,7 @@ import type { TinyFlowSettings } from "../../utils/settings";
 // Edge types for cluster connections
 const edgeTypes = {
   subnode: SubNodeEdge,
+  action: ActionEdge,
 };
 
 interface FlowCanvasProps {

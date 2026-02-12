@@ -2,11 +2,7 @@
   "id": "http-api",
   "name": "HTTP API Call",
   "description": "Fetch data from an API, process the response, and output results",
-  "category": "API & HTTP",
-  "icon": "Globe",
-  "difficulty": "beginner",
-  "tags": ["api", "http", "fetch", "rest"],
-  "startNodeId": "start",
+  "version": "1.0.0",
   "nodes": [
     {
       "id": "start",
@@ -45,5 +41,14 @@
     { "from": "start", "to": "fetch-data", "action": "default" },
     { "from": "fetch-data", "to": "log-response", "action": "default" },
     { "from": "log-response", "to": "end", "action": "default" }
-  ]
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "category": "API & HTTP",
+    "icon": "Globe",
+    "difficulty": "beginner",
+    "tags": ["api", "http", "fetch", "rest"]
+  }
 }

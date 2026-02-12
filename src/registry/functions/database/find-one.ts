@@ -27,6 +27,7 @@ registerFunction(
     ],
     outputs: ["outputKey"],
     icon: "Search",
+    actions: ["success", "error"],
   },
   async (params, context) => {
     const tableName = params.table as string;

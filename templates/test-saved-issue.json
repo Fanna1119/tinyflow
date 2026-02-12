@@ -2,10 +2,7 @@
   "id": "test-saved-issue",
   "name": "test-saved-issue",
   "description": "test save issue",
-  "category": "Getting Started",
-  "icon": "Rocket",
-  "difficulty": "beginner",
-  "tags": [],
+  "version": "1.0.0",
   "nodes": [
     {
       "id": "node-1770795981165-gc81g",
@@ -94,5 +91,13 @@
       "edgeType": "default"
     }
   ],
-  "startNodeId": "node-1770795981165-gc81g"
+  "flow": {
+    "startNodeId": "node-1770795981165-gc81g"
+  },
+  "metadata": {
+    "category": "Getting Started",
+    "icon": "Rocket",
+    "difficulty": "beginner",
+    "tags": []
+  }
 }

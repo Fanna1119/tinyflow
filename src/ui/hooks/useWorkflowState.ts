@@ -78,9 +78,37 @@ export function useWorkflowState(
   const importWorkflow = useCallback(
     (json: string) => {
       try {
-        const workflow = JSON.parse(json) as WorkflowDefinition;
+        const raw = JSON.parse(json) as Record<string, unknown>;
 
-        // Validate the imported workflow
+        // Normalize: support both workflow format and template format
+        // Template format has top-level category/icon/difficulty/tags/startNodeId
+        // Workflow format has version/flow.startNodeId/metadata
+        const metadata = (raw.metadata as Record<string, unknown>) ?? {};
+        const flow = (raw.flow as Record<string, unknown>) ?? {};
+
+        const workflow: WorkflowDefinition = {
+          id: raw.id as string,
+          name: raw.name as string,
+          description: (raw.description as string) ?? "",
+          version: (raw.version as string) ?? "1.0.0",
+          nodes: raw.nodes as WorkflowDefinition["nodes"],
+          edges: raw.edges as WorkflowDefinition["edges"],
+          flow: {
+            startNodeId: (flow.startNodeId ??
+              raw.startNodeId ??
+              "start") as string,
+          },
+          metadata: {
+            ...metadata,
+            // Preserve template-specific fields in metadata
+            ...(raw.category ? { category: raw.category } : {}),
+            ...(raw.icon ? { icon: raw.icon } : {}),
+            ...(raw.difficulty ? { difficulty: raw.difficulty } : {}),
+            ...(raw.tags ? { tags: raw.tags } : {}),
+          },
+        };
+
+        // Validate the normalized workflow
         const validation = validateWorkflow(workflow, registeredFunctions);
 
         if (!validation.valid) {

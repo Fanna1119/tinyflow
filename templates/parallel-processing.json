@@ -2,11 +2,7 @@
   "id": "parallel-processing",
   "name": "Parallel Processing",
   "description": "Process multiple items in parallel and collect results",
-  "category": "Patterns",
-  "icon": "Layers",
-  "difficulty": "intermediate",
-  "tags": ["parallel", "batch", "concurrent", "map-reduce"],
-  "startNodeId": "start",
+  "version": "1.0.0",
   "nodes": [
     {
       "id": "start",
@@ -53,5 +49,14 @@
     { "from": "start", "to": "parallel-process", "action": "default" },
     { "from": "parallel-process", "to": "log-results", "action": "default" },
     { "from": "log-results", "to": "end", "action": "default" }
-  ]
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "category": "Patterns",
+    "icon": "Layers",
+    "difficulty": "intermediate",
+    "tags": ["parallel", "batch", "concurrent", "map-reduce"]
+  }
 }

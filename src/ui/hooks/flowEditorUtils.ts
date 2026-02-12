@@ -94,13 +94,19 @@ export function workflowEdgeToReactFlowEdge(
     };
   }
 
-  // Regular edge styling
+  // Regular edge → action edge with available actions from registry
+  const sourceNode = nodes?.find((n) => n.id === edge.from);
+  const functionId = sourceNode?.functionId;
+  const fnEntry = functionId ? registry.get(functionId) : undefined;
+  const availableActions = fnEntry?.metadata?.actions ?? ["default"];
+
   return {
     ...baseEdge,
-    label: edge.action !== "default" ? edge.action : undefined,
-    type: "smoothstep",
-    animated: edge.action === "error",
-    style: edge.action === "error" ? { stroke: "#ef4444" } : undefined,
+    label: edge.action || "default",
+    type: "action",
+    data: {
+      availableActions,
+    },
   };
 }
 
