@@ -1,0 +1,98 @@
+{
+  "id": "test-saved-issue",
+  "name": "test-saved-issue",
+  "description": "test save issue",
+  "category": "Getting Started",
+  "icon": "Rocket",
+  "difficulty": "beginner",
+  "tags": [],
+  "nodes": [
+    {
+      "id": "node-1770795981165-gc81g",
+      "functionId": "core.start",
+      "params": {},
+      "position": {
+        "x": -40,
+        "y": 240
+      },
+      "label": "core.start"
+    },
+    {
+      "id": "node-1770796015088-i1u2v",
+      "functionId": "core.setValue",
+      "params": {
+        "key": "myValue",
+        "value": ""
+      },
+      "position": {
+        "x": 460,
+        "y": 300
+      },
+      "label": "core.setValue"
+    },
+    {
+      "id": "node-1770796017086-f2ksq",
+      "functionId": "core.delay",
+      "params": {},
+      "position": {
+        "x": 360,
+        "y": 520
+      },
+      "label": "core.delay"
+    },
+    {
+      "id": "node-1770796022706-dhjzf",
+      "functionId": "transform.jsonStringify",
+      "params": {
+        "inputKey": "myValue",
+        "outputKey": "myValueJson"
+      },
+      "position": {
+        "x": 120,
+        "y": 660
+      },
+      "label": "transform.jsonStringify"
+    },
+    {
+      "id": "node-1770796025332-vule6",
+      "functionId": "transform.map",
+      "params": {
+        "inputKey": "myValue",
+        "path": "",
+        "outputKey": "myValueMapped"
+      },
+      "position": {
+        "x": 740,
+        "y": 740
+      },
+      "label": "transform.map"
+    }
+  ],
+  "edges": [
+    {
+      "from": "node-1770795981165-gc81g",
+      "to": "node-1770796015088-i1u2v",
+      "action": "default",
+      "edgeType": "default"
+    },
+    {
+      "from": "node-1770796015088-i1u2v",
+      "to": "node-1770796017086-f2ksq",
+      "action": "default",
+      "edgeType": "default"
+    },
+    {
+      "from": "node-1770796017086-f2ksq",
+      "to": "node-1770796022706-dhjzf",
+      "action": "default",
+      "edgeType": "default"
+    },
+    {
+      "from": "node-1770796022706-dhjzf",
+      "to": "node-1770796025332-vule6",
+      "action": "default",
+      "edgeType": "default"
+    }
+  ],
+  "startNodeId": "node-1770795981165-gc81g"
+}

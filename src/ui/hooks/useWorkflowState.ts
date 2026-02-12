@@ -156,13 +156,23 @@ export function useWorkflowState(
       startNodeId = startNode?.id ?? "";
     }
 
+    // Deduplicate edges (same from+to+action = duplicate)
+    const allEdges = edges.map(reactFlowEdgeToWorkflowEdge);
+    const seen = new Set<string>();
+    const uniqueEdges = allEdges.filter((e) => {
+      const key = `${e.from}|${e.to}|${e.action}|${e.sourceHandle ?? ""}|${e.edgeType ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     return {
       id: workflowMeta.id,
       name: workflowMeta.name,
       description: workflowMeta.description || undefined,
       version: workflowMeta.version,
       nodes: nodes.map(reactFlowNodeToWorkflowNode),
-      edges: edges.map(reactFlowEdgeToWorkflowEdge),
+      edges: uniqueEdges,
       flow: {
         startNodeId,
       },
