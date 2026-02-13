@@ -183,6 +183,12 @@ export interface FunctionMetadata {
   /** Icon name (lucide-react) */
   icon?: string;
   /**
+   * Possible edge actions this function can produce.
+   * Omit for functions that only use "default".
+   * The runtime falls back to "default" when an action has no wired edge.
+   */
+  actions?: string[];
+  /**
    * External npm packages required at runtime.
    * These are NOT bundled inline — instead they are listed in the
    * generated package.json so the deployer can `npm install` them.

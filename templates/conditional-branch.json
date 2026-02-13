@@ -2,11 +2,7 @@
   "id": "conditional-branch",
   "name": "Conditional Branch",
   "description": "Check a condition and route to different paths based on the result",
-  "category": "Control Flow",
-  "icon": "GitBranch",
-  "difficulty": "intermediate",
-  "tags": ["condition", "branch", "if-else", "decision"],
-  "startNodeId": "start",
+  "version": "1.0.0",
   "nodes": [
     {
       "id": "start",
@@ -72,5 +68,14 @@
     { "from": "set-passed", "to": "log-result", "action": "default" },
     { "from": "set-failed", "to": "log-result", "action": "default" },
     { "from": "log-result", "to": "end", "action": "default" }
-  ]
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "category": "Control Flow",
+    "icon": "GitBranch",
+    "difficulty": "intermediate",
+    "tags": ["condition", "branch", "if-else", "decision"]
+  }
 }

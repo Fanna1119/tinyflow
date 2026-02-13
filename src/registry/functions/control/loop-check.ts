@@ -18,6 +18,7 @@ registerFunction(
     ],
     outputs: [],
     icon: "Repeat",
+    actions: ["success", "default"],
   },
   async (params, context) => {
     const counterKey = params.counterKey as string;

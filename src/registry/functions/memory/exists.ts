@@ -19,6 +19,7 @@ registerFunction(
     ],
     outputs: ["outputKey"],
     icon: "Search",
+    actions: ["success", "error"],
   },
   async (params, context) => {
     const memoryKey = params.memoryKey as string;

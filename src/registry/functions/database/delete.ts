@@ -19,6 +19,7 @@ registerFunction(
     ],
     outputs: [],
     icon: "Trash2",
+    actions: ["success", "error"],
   },
   async (params, context) => {
     const tableName = params.table as string;

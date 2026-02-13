@@ -59,6 +59,8 @@ export interface FlowEditorActions {
   onEdgesChange: (changes: EdgeChange[]) => void;
   /** Handle new connections */
   onConnect: (connection: Connection) => void;
+  /** Update the action label on an edge */
+  updateEdgeAction: (edgeId: string, newAction: string) => void;
   /** Add a new node from registry */
   addNode: (functionId: string, position?: { x: number; y: number }) => void;
   /** Remove a node */

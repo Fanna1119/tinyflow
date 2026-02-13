@@ -7,6 +7,7 @@ registerFunction(
     description:
       "Iterates over an array, setting current item and index for each iteration. Use with loop edges to process each item.",
     category: "Control",
+    actions: ["next", "complete"],
     params: [
       param("array", "object", {
         required: true,

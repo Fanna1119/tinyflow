@@ -2,11 +2,7 @@
   "id": "hello-world",
   "name": "Hello World",
   "description": "A simple start → set value → log → end pipeline",
-  "category": "Getting Started",
-  "icon": "Rocket",
-  "difficulty": "beginner",
-  "tags": ["starter", "simple", "beginner"],
-  "startNodeId": "start",
+  "version": "1.0.0",
   "nodes": [
     {
       "id": "start",
@@ -41,5 +37,14 @@
     { "from": "start", "to": "set-greeting", "action": "default" },
     { "from": "set-greeting", "to": "log-greeting", "action": "default" },
     { "from": "log-greeting", "to": "end", "action": "default" }
-  ]
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "category": "Getting Started",
+    "icon": "Rocket",
+    "difficulty": "beginner",
+    "tags": ["starter", "simple", "beginner"]
+  }
 }

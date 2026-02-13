@@ -130,6 +130,17 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
     });
   }, [state.nodes, debugState.nodeStatus, debugState.testValues, dataFlow]);
 
+  // Enhance edges with the onActionChange callback so ActionEdge can update
+  const enhancedEdges = useMemo(() => {
+    return state.edges.map((edge) => ({
+      ...edge,
+      data: {
+        ...edge.data,
+        onActionChange: actions.updateEdgeAction,
+      },
+    }));
+  }, [state.edges, actions.updateEdgeAction]);
+
   // Get selected node data
   const selectedNode = state.selectedNodeId
     ? state.nodes.find((n) => n.id === state.selectedNodeId)
@@ -264,7 +275,7 @@ export function FlowEditor({ initialWorkflow, onSave }: FlowEditorProps) {
         <div className="flex-1 relative">
           <FlowCanvas
             nodes={enhancedNodes}
-            edges={state.edges}
+            edges={enhancedEdges}
             onNodesChange={actions.onNodesChange}
             onEdgesChange={actions.onEdgesChange}
             onConnect={actions.onConnect}

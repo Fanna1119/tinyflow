@@ -16,12 +16,15 @@ import {
 } from "@xyflow/react";
 import type { NodeHandle, NodeType } from "../../schema/types";
 import { HANDLE_COLOR_KEYS } from "./flowEditorUtils";
+import { registry } from "../../registry";
 
 export interface EdgeManagementActions {
   /** Handle edge changes from React Flow */
   onEdgesChange: (changes: EdgeChange[]) => void;
   /** Handle new connections */
   onConnect: (connection: Connection) => void;
+  /** Change the action label on an edge */
+  updateEdgeAction: (edgeId: string, newAction: string) => void;
 }
 
 /**
@@ -194,13 +197,22 @@ export function useEdgeManagement(
         );
       } else {
         // ----- Regular edge -----
+        // Look up available actions from the source node's function metadata
+        const functionId = sourceNode?.data?.functionId as string | undefined;
+        const fnEntry = functionId ? registry.get(functionId) : undefined;
+        const availableActions = fnEntry?.metadata?.actions ?? ["default"];
+
         const edge: Edge = {
           id: `${connection.source}-${connection.target}-${Date.now()}`,
           source: connection.source,
           target: connection.target,
           sourceHandle: connection.sourceHandle,
           targetHandle: connection.targetHandle,
-          type: "smoothstep",
+          type: "action",
+          label: "default",
+          data: {
+            availableActions,
+          },
         };
 
         setEdges((eds) => {
@@ -221,8 +233,29 @@ export function useEdgeManagement(
     [nodes, setEdges, setNodes, setIsDirty],
   );
 
+  // -----------------------------------------------------------------------
+  // Update edge action
+  // -----------------------------------------------------------------------
+  const updateEdgeAction = useCallback(
+    (edgeId: string, newAction: string) => {
+      setEdges((eds) =>
+        eds.map((e) =>
+          e.id === edgeId
+            ? {
+                ...e,
+                label: newAction,
+              }
+            : e,
+        ),
+      );
+      setIsDirty(true);
+    },
+    [setEdges, setIsDirty],
+  );
+
   return {
     onEdgesChange,
     onConnect,
+    updateEdgeAction,
   };
 }

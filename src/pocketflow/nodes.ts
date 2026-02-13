@@ -137,8 +137,16 @@ export class TinyFlowNode extends Node<SharedStore> {
     // Enforce limits
     enforceMemoryLimits(shared);
 
-    // Return action for edge routing
-    return execRes.action ?? (execRes.success ? "default" : "error");
+    // Determine action for edge routing
+    const action = execRes.action ?? (execRes.success ? "default" : "error");
+
+    // If the resolved action has a registered successor, use it.
+    // Otherwise fall back to "default" so the flow continues even when
+    // no explicit error branch is wired up.
+    if (this._successors.has(action)) {
+      return action;
+    }
+    return "default";
   }
 }
 
