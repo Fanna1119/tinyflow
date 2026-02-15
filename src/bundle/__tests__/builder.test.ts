@@ -98,7 +98,7 @@ describe("buildBundle", () => {
       expect(result.code).toContain("production");
     });
 
-    it("should generate bundle without embedded runtime when includeRuntime is false", async () => {
+    it("should always use PocketFlow even when includeRuntime is false", async () => {
       const workflow = createTestWorkflow();
       const result = await buildBundle({
         workflow,
@@ -107,8 +107,12 @@ describe("buildBundle", () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.code).toContain("import { runWorkflow } from 'tinyflow'");
+      // Should import from pocketflow, not tinyflow
+      expect(result.code).toContain("from 'pocketflow'");
+      expect(result.code).not.toContain("from 'tinyflow'");
       expect(result.code).not.toContain("class TinyFlowStore");
+      // Should have PocketFlow Node subclass
+      expect(result.code).toContain("class TFNode extends Node");
     });
   });
 
@@ -123,16 +127,16 @@ describe("buildBundle", () => {
       expect(result.code).not.toContain("export async function");
     });
 
-    it("should use require() when includeRuntime is false", async () => {
+    it("should use require('pocketflow') in CJS format", async () => {
       const workflow = createTestWorkflow();
       const result = await buildBundle({
         workflow,
-        includeRuntime: false,
         format: "cjs",
       });
 
       expect(result.success).toBe(true);
-      expect(result.code).toContain("require('tinyflow')");
+      expect(result.code).toContain("require('pocketflow')");
+      expect(result.code).not.toContain("require('tinyflow')");
     });
   });
 
@@ -540,7 +544,7 @@ describe("bundle package.json emission", () => {
     }
   });
 
-  it("should NOT emit package.json when no runtime deps are needed", async () => {
+  it("should always emit package.json with pocketflow dependency", async () => {
     const workflow: WorkflowDefinition = {
       id: "simple",
       name: "Simple",
@@ -566,7 +570,10 @@ describe("bundle package.json emission", () => {
     const result = await buildBundle({ workflow, format: "esm" });
     expect(result.success).toBe(true);
     expect(result.files).toBeDefined();
-    expect(result.files!["package.json"]).toBeUndefined();
+    // package.json should always be emitted with pocketflow
+    expect(result.files!["package.json"]).toBeDefined();
+    const pkg = JSON.parse(result.files!["package.json"]);
+    expect(pkg.dependencies.pocketflow).toBe("^1.0.4");
   });
 
   it("should emit package.json when workflow uses functions with runtime deps", async () => {
@@ -608,6 +615,7 @@ describe("bundle package.json emission", () => {
     const pkg = JSON.parse(result.files!["package.json"]);
     expect(pkg.dependencies).toBeDefined();
     expect(pkg.dependencies.openai).toBe("^4.0.0");
+    expect(pkg.dependencies.pocketflow).toBe("^1.0.4");
     expect(pkg.private).toBe(true);
     expect(pkg.name).toContain("llm-flow");
   });
@@ -692,5 +700,165 @@ describe("bundle package.json emission", () => {
 
     const pkg = JSON.parse(result.files!["package.json"]);
     expect(pkg.dependencies.openai).toBe("^4.0.0");
+    expect(pkg.dependencies.pocketflow).toBe("^1.0.4");
+  });
+});
+
+// ============================================================================
+// Cluster / Parallel Bundle Tests
+// ============================================================================
+
+describe("cluster bundle generation", () => {
+  function createClusterWorkflow(): WorkflowDefinition {
+    return {
+      id: "cluster-test",
+      name: "Cluster Test",
+      version: "1.0.0",
+      nodes: [
+        {
+          id: "start",
+          functionId: "core.start",
+          params: {},
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: "parallel-cluster",
+          functionId: "core.log",
+          params: { message: "Starting parallel" },
+          position: { x: 100, y: 0 },
+          nodeType: "clusterRoot",
+          handles: [
+            { id: "h1", type: "source", label: "h1", position: "bottom" },
+            { id: "h2", type: "source", label: "h2", position: "bottom" },
+          ],
+        },
+        {
+          id: "sub-a",
+          functionId: "core.setValue",
+          params: { key: "a", value: 1 },
+          position: { x: 50, y: 100 },
+          nodeType: "subNode",
+          parentId: "parallel-cluster",
+          handles: [{ id: "top", type: "target", position: "top" }],
+        },
+        {
+          id: "sub-b",
+          functionId: "core.setValue",
+          params: { key: "b", value: 2 },
+          position: { x: 150, y: 100 },
+          nodeType: "subNode",
+          parentId: "parallel-cluster",
+          handles: [{ id: "top", type: "target", position: "top" }],
+        },
+        {
+          id: "end",
+          functionId: "core.end",
+          params: {},
+          position: { x: 200, y: 0 },
+        },
+      ],
+      edges: [
+        { from: "start", to: "parallel-cluster", action: "default" },
+        { from: "parallel-cluster", to: "end", action: "default" },
+        {
+          from: "parallel-cluster",
+          to: "sub-a",
+          action: "default",
+          sourceHandle: "h1",
+          edgeType: "subnode",
+        },
+        {
+          from: "parallel-cluster",
+          to: "sub-b",
+          action: "default",
+          sourceHandle: "h2",
+          edgeType: "subnode",
+        },
+      ],
+      flow: { startNodeId: "start" },
+    };
+  }
+
+  it("should emit TFClusterNode class when workflow has clusters", async () => {
+    const workflow = createClusterWorkflow();
+    const result = await buildBundle({ workflow, format: "esm" });
+
+    expect(result.success).toBe(true);
+    expect(result.code).toContain("class TFClusterNode extends TFNode");
+    expect(result.code).toContain("Promise.all");
+    expect(result.code).toContain("_clusterOutputs");
+  });
+
+  it("should NOT emit TFClusterNode for workflows without clusters", async () => {
+    const workflow: WorkflowDefinition = {
+      id: "simple",
+      name: "Simple",
+      version: "1.0.0",
+      nodes: [
+        {
+          id: "s",
+          functionId: "core.start",
+          params: {},
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: "e",
+          functionId: "core.end",
+          params: {},
+          position: { x: 100, y: 0 },
+        },
+      ],
+      edges: [{ from: "s", to: "e", action: "default" }],
+      flow: { startNodeId: "s" },
+    };
+    const result = await buildBundle({ workflow, format: "esm" });
+
+    expect(result.success).toBe(true);
+    expect(result.code).not.toContain("TFClusterNode");
+  });
+
+  it("should handle cluster roots and skip sub-node edges in buildFlow", async () => {
+    const workflow = createClusterWorkflow();
+    const result = await buildBundle({ workflow, format: "esm" });
+
+    expect(result.success).toBe(true);
+    // buildFlow should detect clusterRoot / subNode
+    expect(result.code).toContain("clusterRoot");
+    expect(result.code).toContain("subNode");
+    // Sub-node edge filtering
+    expect(result.code).toContain("edge.edgeType === 'subnode'");
+  });
+
+  it("should preserve nodeType and parentId in workflow JSON", async () => {
+    const workflow = createClusterWorkflow();
+    const result = await buildBundle({ workflow, format: "esm" });
+
+    expect(result.success).toBe(true);
+    // nodeType and parentId must survive stripping (only position is removed)
+    expect(result.code).toContain('"nodeType": "clusterRoot"');
+    expect(result.code).toContain('"nodeType": "subNode"');
+    expect(result.code).toContain('"parentId": "parallel-cluster"');
+    // edgeType must survive for sub-node edge filtering
+    expect(result.code).toContain('"edgeType": "subnode"');
+  });
+
+  it("should generate working CJS cluster bundle", async () => {
+    const workflow = createClusterWorkflow();
+    const result = await buildBundle({ workflow, format: "cjs" });
+
+    expect(result.success).toBe(true);
+    expect(result.code).toContain("require('pocketflow')");
+    expect(result.code).toContain("class TFClusterNode extends TFNode");
+    expect(result.code).toContain("module.exports");
+  });
+
+  it("should include all sub-node functions in builtinFunctions", async () => {
+    const workflow = createClusterWorkflow();
+    const result = await buildBundle({ workflow, format: "esm" });
+
+    expect(result.success).toBe(true);
+    // core.log is the cluster root function, core.setValue is the sub-node function
+    expect(result.code).toContain("'core.log'");
+    expect(result.code).toContain("'core.setValue'");
   });
 });

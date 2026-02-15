@@ -27,7 +27,6 @@
       "functionId": "http.request",
       "params": {
         "url": "https://api.open-meteo.com/v1/forecast?latitude=-30.2867&longitude=30.7532&current_weather=true",
-
         "method": "GET",
         "outputKey": "weather"
       },
@@ -88,7 +87,7 @@
     {
       "from": "fetch-weather",
       "to": "build-prompt",
-      "action": "success",
+      "action": "default",
       "edgeType": "default"
     },
     {
@@ -108,6 +107,6 @@
     "startNodeId": "start"
   },
   "metadata": {
-    "updatedAt": "2026-02-06T10:19:27.368Z"
+    "updatedAt": "2026-02-14T06:00:36.381Z"
   }
 }
