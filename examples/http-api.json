@@ -8,7 +8,10 @@
       "id": "start",
       "functionId": "core.start",
       "params": {},
-      "position": { "x": 100, "y": 150 },
+      "position": {
+        "x": 100,
+        "y": 150
+      },
       "label": "Start"
     },
     {
@@ -19,7 +22,10 @@
         "method": "GET",
         "outputKey": "todo"
       },
-      "position": { "x": 300, "y": 150 },
+      "position": {
+        "x": 300,
+        "y": 150
+      },
       "label": "Fetch Todo"
     },
     {
@@ -29,7 +35,10 @@
         "key": "message",
         "value": "Todo fetched successfully"
       },
-      "position": { "x": 550, "y": 150 },
+      "position": {
+        "x": 560,
+        "y": 200
+      },
       "label": "Format Message"
     },
     {
@@ -38,20 +47,37 @@
       "params": {
         "outputKey": "message"
       },
-      "position": { "x": 800, "y": 150 },
+      "position": {
+        "x": 800,
+        "y": 150
+      },
       "label": "End"
     }
   ],
   "edges": [
-    { "from": "start", "to": "fetch-todo", "action": "default" },
-    { "from": "fetch-todo", "to": "format-message", "action": "default" },
-    { "from": "fetch-todo", "to": "format-message", "action": "success" },
-    { "from": "format-message", "to": "end", "action": "default" }
+    {
+      "from": "start",
+      "to": "fetch-todo",
+      "action": "default",
+      "edgeType": "default"
+    },
+    {
+      "from": "fetch-todo",
+      "to": "format-message",
+      "action": "default",
+      "edgeType": "default"
+    },
+    {
+      "from": "format-message",
+      "to": "end",
+      "action": "default",
+      "edgeType": "default"
+    }
   ],
   "flow": {
     "startNodeId": "start"
   },
   "metadata": {
-    "updatedAt": "2026-02-03T10:00:00.000Z"
+    "updatedAt": "2026-02-13T07:04:39.009Z"
   }
 }

@@ -143,18 +143,6 @@ setEnv({ API_KEY: "xxx" });
 runFlow().then(console.log);
 ```
 
-### Browser (IIFE)
-
-```html
-<script src="workflow.bundle.js"></script>
-<script>
-  TinyFlow.setEnv({ API_KEY: "xxx" });
-  TinyFlow.runFlow().then((result) => {
-    console.log(result.data);
-  });
-</script>
-```
-
 ## Programmatic API
 
 ### Running Workflows

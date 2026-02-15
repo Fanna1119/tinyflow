@@ -399,4 +399,169 @@ describe("http functions metadata", () => {
     expect(fn?.metadata.category).toBe("HTTP");
     expect(fn?.metadata.params.some((p) => p.name === "method")).toBe(true);
   });
+
+  it("http.batch should have correct metadata", async () => {
+    const { registry } = await import("../index");
+    const fn = registry.get("http.batch");
+
+    expect(fn).toBeDefined();
+    expect(fn?.metadata.category).toBe("HTTP");
+    expect(fn?.metadata.params.some((p) => p.name === "requests")).toBe(true);
+    expect(fn?.metadata.params.some((p) => p.name === "maxConcurrency")).toBe(
+      true,
+    );
+  });
+});
+
+// ============================================================================
+// HTTP Batch Function
+// ============================================================================
+
+describe("http.batch", () => {
+  const mockFetch = vi.fn();
+  global.fetch = mockFetch;
+
+  beforeEach(() => {
+    mockFetch.mockClear();
+  });
+
+  it("should process empty requests array", async () => {
+    const { registry } = await import("../index");
+    const fn = registry.get("http.batch");
+    expect(fn).toBeDefined();
+
+    const ctx = createMockContext();
+    const result = await fn!.execute({ requests: [] }, ctx);
+
+    expect(result.success).toBe(true);
+    expect(result.output).toEqual([]);
+    expect(ctx.store.get("httpBatchResults")).toEqual([]);
+  });
+
+  it("should handle requests from store key", async () => {
+    const { registry } = await import("../index");
+    const fn = registry.get("http.batch");
+    expect(fn).toBeDefined();
+
+    const ctx = createMockContext();
+    ctx.store.set("myRequests", [{ url: "https://api.example.com" }]);
+
+    mockFetch.mockResolvedValueOnce({
+      status: 200,
+      ok: true,
+      json: () => Promise.resolve({ success: true }),
+    });
+
+    const result = await fn!.execute({ requests: "myRequests" }, ctx);
+
+    expect(result.success).toBe(true);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://api.example.com",
+      expect.any(Object),
+    );
+  });
+
+  it("should process multiple requests successfully", async () => {
+    const { registry } = await import("../index");
+    const fn = registry.get("http.batch");
+    expect(fn).toBeDefined();
+
+    const ctx = createMockContext();
+    const requests = [
+      { url: "https://api1.example.com", method: "GET" },
+      { url: "https://api2.example.com", method: "POST", bodyKey: "body" },
+    ];
+    ctx.store.set("body", { data: "test" });
+
+    mockFetch
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: () => Promise.resolve({ result: 1 }),
+      })
+      .mockResolvedValueOnce({
+        status: 201,
+        ok: true,
+        json: () => Promise.resolve({ result: 2 }),
+      });
+
+    const result = await fn!.execute({ requests }, ctx);
+
+    expect(result.success).toBe(true);
+    expect(result.output).toHaveLength(2);
+    expect(result.output[0]).toEqual({
+      status: 200,
+      ok: true,
+      data: { result: 1 },
+    });
+    expect(result.output[1]).toEqual({
+      status: 201,
+      ok: true,
+      data: { result: 2 },
+    });
+    expect(ctx.store.get("httpBatchResults")).toEqual(result.output);
+  });
+
+  it("should handle partial failures", async () => {
+    const { registry } = await import("../index");
+    const fn = registry.get("http.batch");
+    expect(fn).toBeDefined();
+
+    const ctx = createMockContext();
+    const requests = [
+      { url: "https://api1.example.com" },
+      { url: "https://api2.example.com" },
+    ];
+
+    mockFetch
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: () => Promise.resolve({ success: true }),
+      })
+      .mockResolvedValueOnce({
+        status: 500,
+        ok: false,
+        json: () => Promise.resolve({ error: "Server error" }),
+      });
+
+    const result = await fn!.execute({ requests }, ctx);
+
+    expect(result.success).toBe(false);
+    expect(result.output).toHaveLength(2);
+    expect(result.output[0].ok).toBe(true);
+    expect(result.output[1].ok).toBe(false);
+  });
+
+  it("should respect maxConcurrency", async () => {
+    const { registry } = await import("../index");
+    const fn = registry.get("http.batch");
+    expect(fn).toBeDefined();
+
+    const ctx = createMockContext();
+    const requests = Array(5).fill({ url: "https://api.example.com" });
+
+    mockFetch.mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: () => Promise.resolve({}),
+    });
+
+    const result = await fn!.execute({ requests, maxConcurrency: 2 }, ctx);
+
+    expect(result.success).toBe(true);
+    expect(result.output).toHaveLength(5);
+  });
+
+  it("should handle invalid requests parameter", async () => {
+    const { registry } = await import("../index");
+    const fn = registry.get("http.batch");
+    expect(fn).toBeDefined();
+
+    const ctx = createMockContext();
+    const result = await fn!.execute({ requests: "nonexistent" }, ctx);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("does not contain an array");
+  });
 });

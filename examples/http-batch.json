@@ -1,0 +1,121 @@
+{
+  "id": "example-http-batch",
+  "name": "HTTP Batch Example",
+  "description": "Demonstrates making multiple HTTP requests in parallel with http.batch",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "start",
+      "functionId": "core.start",
+      "params": {
+        "input": {
+          "apiKey": "your-api-key-here",
+          "userIds": [1, 2, 3, 4, 5]
+        }
+      },
+      "position": { "x": 100, "y": 100 }
+    },
+    {
+      "id": "batch-api-calls",
+      "functionId": "http.batch",
+      "params": {
+        "requests": [
+          {
+            "url": "https://jsonplaceholder.typicode.com/users/{{userIds.0}}",
+            "method": "GET",
+            "headers": {
+              "Authorization": "Bearer {{apiKey}}"
+            }
+          },
+          {
+            "url": "https://jsonplaceholder.typicode.com/users/{{userIds.1}}",
+            "method": "GET",
+            "headers": {
+              "Authorization": "Bearer {{apiKey}}"
+            }
+          },
+          {
+            "url": "https://jsonplaceholder.typicode.com/users/{{userIds.2}}",
+            "method": "GET",
+            "headers": {
+              "Authorization": "Bearer {{apiKey}}"
+            }
+          },
+          {
+            "url": "https://jsonplaceholder.typicode.com/users/{{userIds.3}}",
+            "method": "GET",
+            "headers": {
+              "Authorization": "Bearer {{apiKey}}"
+            }
+          },
+          {
+            "url": "https://jsonplaceholder.typicode.com/users/{{userIds.4}}",
+            "method": "GET",
+            "headers": {
+              "Authorization": "Bearer {{apiKey}}"
+            }
+          }
+        ],
+        "outputKey": "apiResponses",
+        "maxConcurrency": 3
+      },
+      "position": { "x": 300, "y": 100 }
+    },
+    {
+      "id": "process-responses",
+      "functionId": "transform.map",
+      "params": {
+        "inputKey": "apiResponses",
+        "outputKey": "userNames",
+        "expression": "item.data.name"
+      },
+      "position": { "x": 500, "y": 100 }
+    },
+    {
+      "id": "log-result",
+      "functionId": "core.log",
+      "params": {
+        "key": "userNames",
+        "message": "Fetched user names: {{userNames}}"
+      },
+      "position": { "x": 700, "y": 100 }
+    },
+    {
+      "id": "end",
+      "functionId": "core.end",
+      "params": {
+        "outputKey": "userNames"
+      },
+      "position": { "x": 900, "y": 100 }
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "batch-api-calls",
+      "action": "default"
+    },
+    {
+      "from": "batch-api-calls",
+      "to": "process-responses",
+      "action": "default"
+    },
+    {
+      "from": "process-responses",
+      "to": "log-result",
+      "action": "default"
+    },
+    {
+      "from": "log-result",
+      "to": "end",
+      "action": "default"
+    }
+  ],
+  "flow": {
+    "startNodeId": "start"
+  },
+  "metadata": {
+    "author": "TinyFlow",
+    "tags": ["example", "http", "batch", "api"]
+  }
+}
