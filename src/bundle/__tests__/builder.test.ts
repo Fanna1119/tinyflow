@@ -862,3 +862,221 @@ describe("cluster bundle generation", () => {
     expect(result.code).toContain("'core.setValue'");
   });
 });
+
+// ============================================================================
+// Streaming (NDJSON) Bundle Tests
+// ============================================================================
+
+describe("streaming server generation", () => {
+  describe("single-workflow server with serverStream", () => {
+    it("should generate NDJSON streaming handler when serverStream is true", async () => {
+      const workflow = createTestWorkflow();
+      const result = await buildBundle({
+        workflow,
+        format: "esm",
+        includeServer: true,
+        serverStream: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.files).toBeDefined();
+      const server = result.files!["server.js"];
+      expect(server).toBeDefined();
+      expect(server).toContain("createNDJSONStream");
+      expect(server).toContain("application/x-ndjson");
+      expect(server).toContain("Transfer-Encoding");
+      expect(server).toContain("Symbol.asyncIterator");
+    });
+
+    it("should NOT include streaming helper when serverStream is false", async () => {
+      const workflow = createTestWorkflow();
+      const result = await buildBundle({
+        workflow,
+        format: "esm",
+        includeServer: true,
+        serverStream: false,
+      });
+
+      expect(result.success).toBe(true);
+      const server = result.files!["server.js"];
+      expect(server).toBeDefined();
+      expect(server).not.toContain("createNDJSONStream");
+      expect(server).not.toContain("application/x-ndjson");
+      expect(server).toContain("Response.json(result)");
+    });
+
+    it("should default to non-streaming when serverStream omitted", async () => {
+      const workflow = createTestWorkflow();
+      const result = await buildBundle({
+        workflow,
+        format: "esm",
+        includeServer: true,
+      });
+
+      expect(result.success).toBe(true);
+      const server = result.files!["server.js"];
+      expect(server).not.toContain("createNDJSONStream");
+    });
+  });
+
+  describe("multi-workflow server with per-endpoint stream", () => {
+    it("should generate streaming handler for entries with stream: true", async () => {
+      const result = await buildBundle({
+        workflows: [
+          {
+            workflow: createTestWorkflow({ id: "w1", name: "Streaming" }),
+            exportName: "streamingFlow",
+            stream: true,
+          },
+          {
+            workflow: createTestWorkflow({ id: "w2", name: "Normal" }),
+            exportName: "normalFlow",
+            stream: false,
+          },
+        ],
+        format: "esm",
+        includeServer: true,
+      });
+
+      expect(result.success).toBe(true);
+      const server = result.files!["server.js"];
+      expect(server).toBeDefined();
+
+      // Should include the NDJSON helper since at least one entry streams
+      expect(server).toContain("createNDJSONStream");
+
+      // Streaming handler uses createNDJSONStream
+      expect(server).toContain("createNDJSONStream(streamingFlow, payload)");
+
+      // Non-streaming handler uses Response.json
+      expect(server).toContain("await normalFlow.runFlow");
+      expect(server).toContain("Response.json(result");
+    });
+
+    it("should NOT include streaming helper when no entries stream", async () => {
+      const result = await buildBundle({
+        workflows: [
+          {
+            workflow: createTestWorkflow({ id: "w1", name: "Flow A" }),
+            exportName: "flowA",
+            stream: false,
+          },
+        ],
+        format: "esm",
+        includeServer: true,
+      });
+
+      expect(result.success).toBe(true);
+      const server = result.files!["server.js"];
+      expect(server).not.toContain("createNDJSONStream");
+    });
+
+    it("should apply serverStream as default for entries without explicit stream", async () => {
+      const result = await buildBundle({
+        workflows: [
+          {
+            workflow: createTestWorkflow({ id: "w1", name: "Flow A" }),
+            exportName: "flowA",
+            // stream not set — should inherit serverStream
+          },
+        ],
+        format: "esm",
+        includeServer: true,
+        serverStream: true,
+      });
+
+      expect(result.success).toBe(true);
+      const server = result.files!["server.js"];
+      expect(server).toContain("createNDJSONStream");
+    });
+
+    it("should mark streaming endpoints in endpoint docs", async () => {
+      const result = await buildBundle({
+        workflows: [
+          {
+            workflow: createTestWorkflow({ id: "w1", name: "Streaming" }),
+            exportName: "streamingFlow",
+            stream: true,
+          },
+        ],
+        format: "esm",
+        includeServer: true,
+      });
+
+      expect(result.success).toBe(true);
+      const server = result.files!["server.js"];
+      expect(server).toContain("[STREAM]");
+    });
+  });
+
+  describe("runtime callback wiring", () => {
+    it("should wire onLog/onNodeComplete/onError into shared store", async () => {
+      const workflow = createTestWorkflow();
+      const result = await buildBundle({ workflow, format: "esm" });
+
+      expect(result.success).toBe(true);
+      const code = result.code!;
+
+      // createSharedStore should include callback fields
+      expect(code).toContain("onLog: null");
+      expect(code).toContain("onNodeComplete: null");
+      expect(code).toContain("onError: null");
+
+      // executeWorkflow should set callbacks on shared
+      expect(code).toContain("shared.onLog = onLog ?? null");
+      expect(code).toContain("shared.onNodeComplete = onNodeComplete ?? null");
+      expect(code).toContain("shared.onError = onError ?? null");
+
+      // TFNode should call callbacks
+      expect(code).toContain("if (shared.onLog) shared.onLog(fullMsg)");
+      expect(code).toContain(
+        "if (shared.onNodeComplete) shared.onNodeComplete(",
+      );
+      expect(code).toContain("if (shared.onError) shared.onError(");
+    });
+  });
+
+  describe("bundle README streaming docs", () => {
+    it("should document streaming endpoints in README", async () => {
+      const result = await buildBundle({
+        workflows: [
+          {
+            workflow: createTestWorkflow({ id: "w1", name: "StreamFlow" }),
+            exportName: "streamFlow",
+            stream: true,
+          },
+        ],
+        format: "esm",
+        includeServer: true,
+      });
+
+      expect(result.success).toBe(true);
+      const readme = result.files!["README.md"];
+      expect(readme).toBeDefined();
+      expect(readme).toContain("NDJSON");
+      expect(readme).toContain("Streaming");
+      expect(readme).toContain("application/x-ndjson");
+      expect(readme).toContain("node_complete");
+      expect(readme).toContain("curl -N");
+    });
+
+    it("should NOT include streaming docs when no endpoints stream", async () => {
+      const result = await buildBundle({
+        workflows: [
+          {
+            workflow: createTestWorkflow({ id: "w1", name: "NormalFlow" }),
+            exportName: "normalFlow",
+            stream: false,
+          },
+        ],
+        format: "esm",
+        includeServer: true,
+      });
+
+      expect(result.success).toBe(true);
+      const readme = result.files!["README.md"];
+      expect(readme).toBeDefined();
+      expect(readme).not.toContain("application/x-ndjson");
+    });
+  });
+});

@@ -333,6 +333,9 @@ function createSharedStore(initialData = {}, env = {}) {
     logs: [],
     nodeResults: new Map(),
     lastError: null,
+    onLog: null,
+    onNodeComplete: null,
+    onError: null,
   };
 }
 
@@ -370,7 +373,11 @@ class TFNode extends Node {
       nodeId: config.id,
       store: shared.data,
       env: { ...this._flowEnvs, ...config.envs },
-      log: (msg) => { shared.logs.push(\`[\${config.id}] \${msg}\`); },
+      log: (msg) => {
+        const fullMsg = \`[\${config.id}] \${msg}\`;
+        shared.logs.push(fullMsg);
+        if (shared.onLog) shared.onLog(fullMsg);
+      },
     };
     try {
       return await fn(config.params, ctx);
@@ -386,7 +393,9 @@ class TFNode extends Node {
     shared.logs.push(\`[\${status}] \${nodeId}: \${execRes.success ? 'completed' : execRes.error}\`);
     if (!execRes.success) {
       shared.lastError = { nodeId, error: execRes.error ?? 'Unknown error' };
+      if (shared.onError) shared.onError(nodeId, execRes.error ?? 'Unknown error');
     }
+    if (shared.onNodeComplete) shared.onNodeComplete(nodeId, execRes.success, execRes.output ?? null);
     const action = execRes.action ?? (execRes.success ? 'default' : 'error');
     if (this._successors.has(action)) return action;
     return 'default';
@@ -653,6 +662,9 @@ async function executeWorkflow(workflow, options = {}) {
   const { initialData = {}, env = {}, onLog, onNodeComplete, onError } = options;
 
   const shared = createSharedStore(initialData, env);
+  shared.onLog = onLog ?? null;
+  shared.onNodeComplete = onNodeComplete ?? null;
+  shared.onError = onError ?? null;
   const flow = buildFlow(workflow, env);
 
   try {
@@ -886,6 +898,73 @@ export default workflows;
 }
 
 /**
+ * Generate the NDJSON streaming helper code (emitted once per server file)
+ * Uses Bun's async-iterator Response support to stream newline-delimited JSON.
+ * See: https://bun.sh/docs/api/http#streaming
+ */
+function generateNDJSONStreamHelper(): string {
+  return `
+// =============================================================================
+// NDJSON Streaming Helper
+// =============================================================================
+
+/**
+ * Create an NDJSON streaming response from a workflow execution.
+ * Events are newline-delimited JSON objects with a "type" field:
+ *   { type: "log",           message }
+ *   { type: "node_complete", nodeId, success, output }
+ *   { type: "error",         nodeId, error }
+ *   { type: "done",          result }
+ */
+function createNDJSONStream(workflow, payload) {
+  const events = [];
+  let resolveNext = null;
+  let done = false;
+
+  function push(event) {
+    events.push(JSON.stringify(event) + '\\n');
+    if (resolveNext) { resolveNext(); resolveNext = null; }
+  }
+
+  // Start workflow execution in background
+  workflow.runFlow({
+    initialData: payload.initialData ?? payload,
+    env: payload.env,
+    onLog: (message) => push({ type: 'log', message }),
+    onNodeComplete: (nodeId, success, output) =>
+      push({ type: 'node_complete', nodeId, success, output }),
+    onError: (nodeId, error) => push({ type: 'error', nodeId, error }),
+  }).then((result) => {
+    push({ type: 'done', result });
+    done = true;
+    if (resolveNext) { resolveNext(); resolveNext = null; }
+  }).catch((e) => {
+    push({ type: 'error', nodeId: '', error: e?.message ?? String(e) });
+    done = true;
+    if (resolveNext) { resolveNext(); resolveNext = null; }
+  });
+
+  // Async iterator yielding NDJSON lines as they arrive
+  return {
+    [Symbol.asyncIterator]() {
+      return {
+        async next() {
+          while (events.length === 0 && !done) {
+            await new Promise((r) => { resolveNext = r; });
+          }
+          if (events.length > 0) {
+            return { value: events.shift(), done: false };
+          }
+          return { value: undefined, done: true };
+        },
+      };
+    },
+  };
+}
+`;
+}
+
+/**
  * Generate multi-workflow server with one endpoint per workflow
  */
 function generateMultiWorkflowServer(
@@ -899,6 +978,8 @@ function generateMultiWorkflowServer(
       ? `import { ${entries.map((e) => e.exportName).join(", ")} } from './${bundleFilename}';`
       : `const { ${entries.map((e) => e.exportName).join(", ")} } = require('./${bundleFilename}');`;
 
+  const hasAnyStream = entries.some((e) => e.stream);
+
   // Build endpoint documentation
   const endpointDocs = entries
     .map((entry) => {
@@ -906,7 +987,8 @@ function generateMultiWorkflowServer(
         entry.endpointPath ||
         `/api/${entry.exportName.toLowerCase().replace(/_/g, "-")}`;
       const methods = entry.methods || ["POST"];
-      return `//   ${methods.join("|")} ${path} -> ${entry.workflow.name}`;
+      const streamTag = entry.stream ? " [STREAM]" : "";
+      return `//   ${methods.join("|")} ${path} -> ${entry.workflow.name}${streamTag}`;
     })
     .join("\n");
 
@@ -914,6 +996,31 @@ function generateMultiWorkflowServer(
   const handlerFunctions = entries
     .map((entry) => {
       const name = entry.exportName;
+
+      if (entry.stream) {
+        // Streaming handler — returns NDJSON async-iterator Response
+        return `async function handle_${name}(req) {
+  try {
+    const payload = req.method === 'GET' ? {} : await req.json().catch(() => ({}));
+    const iterator = createNDJSONStream(${name}, payload);
+    return new Response(iterator, {
+      headers: {
+        'Content-Type': 'application/x-ndjson',
+        'Transfer-Encoding': 'chunked',
+        'Cache-Control': 'no-cache',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  } catch (e) {
+    return Response.json(
+      { error: e?.message ?? String(e) },
+      { status: 500 },
+    );
+  }
+}`;
+      }
+
+      // Non-streaming handler (default)
       return `async function handle_${name}(req) {
   try {
     const payload = req.method === 'GET' ? {} : await req.json().catch(() => ({}));
@@ -962,13 +1069,14 @@ function generateMultiWorkflowServer(
         e.endpointPath ||
         `/api/${e.exportName.toLowerCase().replace(/_/g, "-")}`,
       methods: e.methods || ["POST"],
+      stream: e.stream || false,
     })),
     null,
     2,
   );
 
   return `${importStatement}
-
+${hasAnyStream ? generateNDJSONStreamHelper() : ""}
 // =============================================================================
 // TinyFlow Multi-Workflow Server (Bun v1.2.3+ routes API)
 // Endpoints:
@@ -997,7 +1105,8 @@ ${entries
   .map((e) => {
     const path =
       e.endpointPath || `/api/${e.exportName.toLowerCase().replace(/_/g, "-")}`;
-    return `console.log('  ${path} -> ${e.workflow.name}');`;
+    const streamTag = e.stream ? " (streaming)" : "";
+    return `console.log('  ${path} -> ${e.workflow.name}${streamTag}');`;
   })
   .join("\n")}
 `;
@@ -1022,6 +1131,7 @@ export async function buildBundle(
     emitDocker = false,
     emitCompose = false,
     bundleFilename,
+    serverStream = false,
   } = options;
 
   // Validate we have either single workflow or multiple
@@ -1041,6 +1151,7 @@ export async function buildBundle(
       emitDocker,
       emitCompose,
       bundleFilename,
+      serverStream,
     });
   }
 
@@ -1084,9 +1195,25 @@ export async function buildBundle(
           ? `import bundle from './${finalBundleFilename}';`
           : `const bundle = require('./${finalBundleFilename}');`;
 
-      const serverCode = `${importStatement}
+      const streamHelper = serverStream ? generateNDJSONStreamHelper() : "";
 
-async function handleRun(req) {
+      const handlerCode = serverStream
+        ? `async function handleRun(req) {
+  try {
+    const payload = await req.json();
+    const iterator = createNDJSONStream(bundle, payload);
+    return new Response(iterator, {
+      headers: {
+        'Content-Type': 'application/x-ndjson',
+        'Transfer-Encoding': 'chunked',
+        'Cache-Control': 'no-cache',
+      },
+    });
+  } catch (e) {
+    return Response.json({ error: e?.message ?? String(e) }, { status: 500 });
+  }
+}`
+        : `async function handleRun(req) {
   try {
     const payload = await req.json();
     const result = await bundle.runFlow({
@@ -1097,7 +1224,11 @@ async function handleRun(req) {
   } catch (e) {
     return Response.json({ error: e?.message ?? String(e) }, { status: 500 });
   }
-}
+}`;
+
+      const serverCode = `${importStatement}
+${streamHelper}
+${handlerCode}
 
 const server = Bun.serve({
   port: Number(process.env.PORT || ${serverPort}),
@@ -1199,7 +1330,14 @@ export async function buildMultiWorkflowBundle(
     emitDocker = false,
     emitCompose = false,
     bundleFilename,
+    serverStream = false,
   } = options;
+
+  // Apply serverStream as default for entries that don't set stream explicitly
+  const resolvedWorkflows = workflows.map((w) => ({
+    ...w,
+    stream: w.stream ?? serverStream,
+  }));
 
   if (workflows.length === 0) {
     return { success: false, error: "No workflows provided" };
@@ -1245,7 +1383,7 @@ export async function buildMultiWorkflowBundle(
     // Generate multi-workflow server
     if (includeServer) {
       const serverCode = generateMultiWorkflowServer(
-        workflows,
+        resolvedWorkflows,
         finalBundleFilename,
         serverPort,
         format,
@@ -1299,7 +1437,7 @@ services:
 
     // Generate README for the bundle
     const readme = generateBundleReadme(
-      workflows,
+      resolvedWorkflows,
       finalBundleFilename,
       includeServer,
       serverPort,
@@ -1359,6 +1497,8 @@ Each workflow export has these methods:
 `;
 
   if (includeServer) {
+    const hasStreamEndpoints = workflows.some((w) => w.stream);
+
     readme += `
 ## HTTP Server
 
@@ -1372,14 +1512,15 @@ PORT=${serverPort} bun server.js
 
 ### Endpoints
 
-| Endpoint | Method | Workflow |
-|----------|--------|----------|
+| Endpoint | Method | Workflow | Streaming |
+|----------|--------|----------|-----------|
 ${workflows
   .map((w) => {
     const path =
       w.endpointPath || `/api/${w.exportName.toLowerCase().replace(/_/g, "-")}`;
     const methods = (w.methods || ["POST"]).join(", ");
-    return `| \`${path}\` | ${methods} | ${w.workflow.name} |`;
+    const stream = w.stream ? "✓ NDJSON" : "—";
+    return `| \`${path}\` | ${methods} | ${w.workflow.name} | ${stream} |`;
   })
   .join("\n")}
 
@@ -1391,6 +1532,72 @@ curl -X POST http://localhost:${serverPort}${workflows[0].endpointPath || `/api/
   -d '{"initialData": {}}'
 \`\`\`
 `;
+
+    if (hasStreamEndpoints) {
+      const streamExample = workflows.find((w) => w.stream);
+      const streamPath = streamExample
+        ? streamExample.endpointPath ||
+          `/api/${streamExample.exportName.toLowerCase().replace(/_/g, "-")}`
+        : "/api/example";
+
+      readme += `
+### Streaming (NDJSON)
+
+Endpoints marked with **NDJSON** return a stream of newline-delimited JSON objects
+(\`application/x-ndjson\`). Each line is a JSON object with a \`type\` field:
+
+| Type | Fields | Description |
+|------|--------|-------------|
+| \`log\` | \`message\` | Log message from the workflow |
+| \`node_complete\` | \`nodeId\`, \`success\`, \`output\` | Node finished executing |
+| \`error\` | \`nodeId\`, \`error\` | An error occurred |
+| \`done\` | \`result\` | Final execution result (last event) |
+
+#### Example: consuming a streaming endpoint
+
+\`\`\`bash
+curl -N -X POST http://localhost:${serverPort}${streamPath} \\
+  -H "Content-Type: application/json" \\
+  -d '{"initialData": {}}'
+\`\`\`
+
+Each line of the response is a complete JSON object:
+
+\`\`\`
+{"type":"log","message":"[node-1] Starting..."}
+{"type":"node_complete","nodeId":"node-1","success":true,"output":{}}
+{"type":"done","result":{"success":true,"data":{},"logs":[],"duration":42}}
+\`\`\`
+
+#### Example: consuming in JavaScript
+
+\`\`\`javascript
+const res = await fetch('http://localhost:${serverPort}${streamPath}', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ initialData: {} }),
+});
+
+const reader = res.body.getReader();
+const decoder = new TextDecoder();
+let buffer = '';
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  buffer += decoder.decode(value, { stream: true });
+  const lines = buffer.split('\\\\n');
+  buffer = lines.pop() || '';
+  for (const line of lines) {
+    if (line.trim()) {
+      const event = JSON.parse(line);
+      console.log(event.type, event);
+    }
+  }
+}
+\`\`\`
+`;
+    }
   }
 
   return readme;

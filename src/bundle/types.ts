@@ -16,6 +16,8 @@ export interface WorkflowBundleEntry {
   endpointPath?: string;
   /** HTTP methods allowed (default: ['POST']) */
   methods?: ("GET" | "POST" | "PUT" | "DELETE")[];
+  /** Enable NDJSON streaming for this endpoint (default: false) */
+  stream?: boolean;
 }
 
 /**
@@ -44,6 +46,8 @@ export interface BundleOptions {
   emitCompose?: boolean;
   /** Custom bundle filename (default varies by format) */
   bundleFilename?: string;
+  /** Enable NDJSON streaming for single-workflow server (default: false) */
+  serverStream?: boolean;
 }
 
 /**
