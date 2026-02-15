@@ -899,39 +899,6 @@ function generateMultiWorkflowServer(
       ? `import { ${entries.map((e) => e.exportName).join(", ")} } from './${bundleFilename}';`
       : `const { ${entries.map((e) => e.exportName).join(", ")} } = require('./${bundleFilename}');`;
 
-  // Build routing map
-  const routeHandlers = entries
-    .map((entry) => {
-      const path =
-        entry.endpointPath ||
-        `/api/${entry.exportName.toLowerCase().replace(/_/g, "-")}`;
-      const methods = entry.methods || ["POST"];
-      const methodCheck = methods
-        .map((m) => `req.method === '${m}'`)
-        .join(" || ");
-
-      return `    // ${entry.workflow.name}
-    if (url.pathname === '${path}' && (${methodCheck})) {
-      try {
-        const payload = req.method === 'GET' ? {} : await req.json().catch(() => ({}));
-        const result = await ${entry.exportName}.runFlow({
-          initialData: payload.initialData ?? payload,
-          env: payload.env,
-        });
-        return new Response(JSON.stringify(result), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        });
-      } catch (e) {
-        return new Response(
-          JSON.stringify({ error: e?.message ?? String(e) }),
-          { status: 500, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
-    }`;
-    })
-    .join("\n\n");
-
   // Build endpoint documentation
   const endpointDocs = entries
     .map((entry) => {
@@ -943,66 +910,88 @@ function generateMultiWorkflowServer(
     })
     .join("\n");
 
+  // Build handler functions for each workflow
+  const handlerFunctions = entries
+    .map((entry) => {
+      const name = entry.exportName;
+      return `async function handle_${name}(req) {
+  try {
+    const payload = req.method === 'GET' ? {} : await req.json().catch(() => ({}));
+    const result = await ${name}.runFlow({
+      initialData: payload.initialData ?? payload,
+      env: payload.env,
+    });
+    return Response.json(result, {
+      headers: { 'Access-Control-Allow-Origin': '*' },
+    });
+  } catch (e) {
+    return Response.json(
+      { error: e?.message ?? String(e) },
+      { status: 500 },
+    );
+  }
+}`;
+    })
+    .join("\n\n");
+
+  // Build route entries for each workflow
+  const routeEntries = entries
+    .map((entry) => {
+      const path =
+        entry.endpointPath ||
+        `/api/${entry.exportName.toLowerCase().replace(/_/g, "-")}`;
+      const methods = entry.methods || ["POST"];
+      const name = entry.exportName;
+
+      if (methods.length === 1) {
+        return `    "${path}": { ${methods[0]}: handle_${name} },`;
+      }
+      const methodHandlers = methods
+        .map((m) => `${m}: handle_${name}`)
+        .join(", ");
+      return `    "${path}": { ${methodHandlers} },`;
+    })
+    .join("\n");
+
+  // Build endpoints info for the index route
+  const endpointsJson = JSON.stringify(
+    entries.map((e) => ({
+      name: e.workflow.name,
+      exportName: e.exportName,
+      path:
+        e.endpointPath ||
+        `/api/${e.exportName.toLowerCase().replace(/_/g, "-")}`,
+      methods: e.methods || ["POST"],
+    })),
+    null,
+    2,
+  );
+
   return `${importStatement}
 
 // =============================================================================
-// TinyFlow Multi-Workflow Server
+// TinyFlow Multi-Workflow Server (Bun v1.2.3+ routes API)
 // Endpoints:
 ${endpointDocs}
 // =============================================================================
 
-Bun.serve({
+${handlerFunctions}
+
+const server = Bun.serve({
   port: Number(process.env.PORT || ${serverPort}),
-  async fetch(req) {
-    const url = new URL(req.url);
-    
-    // Handle CORS preflight
-    if (req.method === 'OPTIONS') {
-      return new Response(null, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-      });
-    }
-
-    // Health check
-    if (url.pathname === '/health') {
-      return new Response(JSON.stringify({ status: 'ok', workflows: ${entries.length} }), {
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    // List available endpoints
-    if (url.pathname === '/' || url.pathname === '/api') {
-      const endpoints = ${JSON.stringify(
-        entries.map((e) => ({
-          name: e.workflow.name,
-          exportName: e.exportName,
-          path:
-            e.endpointPath ||
-            `/api/${e.exportName.toLowerCase().replace(/_/g, "-")}`,
-          methods: e.methods || ["POST"],
-        })),
-        null,
-        2,
-      )};
-      return new Response(JSON.stringify({ endpoints }), {
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-${routeHandlers}
-
-    return new Response(JSON.stringify({ error: 'Not found' }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  routes: {
+    "/health": Response.json({ status: "ok", workflows: ${entries.length} }),
+    "/": Response.json({ endpoints: ${endpointsJson} }),
+    "/api": Response.json({ endpoints: ${endpointsJson} }),
+${routeEntries}
+    "/api/*": Response.json({ error: "Not found" }, { status: 404 }),
+  },
+  fetch(req) {
+    return Response.json({ error: "Not found" }, { status: 404 });
   },
 });
 
-console.log(\`TinyFlow server listening on port \${process.env.PORT || ${serverPort}}\`);
+console.log(\`TinyFlow server listening on \${server.url}\`);
 console.log('Available endpoints:');
 ${entries
   .map((e) => {
@@ -1088,69 +1077,42 @@ export async function buildBundle(
 
     files[finalBundleFilename] = code;
 
-    // Generate server.js using Bun.serve
+    // Generate server.js using Bun.serve with routes API (Bun v1.2.3+)
     if (includeServer) {
-      const serverCode =
+      const importStatement =
         format === "esm"
-          ? `import bundle from './${finalBundleFilename}';
+          ? `import bundle from './${finalBundleFilename}';`
+          : `const bundle = require('./${finalBundleFilename}');`;
 
-Bun.serve({
+      const serverCode = `${importStatement}
+
+async function handleRun(req) {
+  try {
+    const payload = await req.json();
+    const result = await bundle.runFlow({
+      initialData: payload.initialData,
+      env: payload.env,
+    });
+    return Response.json(result);
+  } catch (e) {
+    return Response.json({ error: e?.message ?? String(e) }, { status: 500 });
+  }
+}
+
+const server = Bun.serve({
   port: Number(process.env.PORT || ${serverPort}),
-  async fetch(req) {
-    const url = new URL(req.url);
-    if (req.method === 'POST' && url.pathname === '/run') {
-      try {
-        const payload = await req.json();
-        const result = await bundle.runFlow({
-          initialData: payload.initialData,
-          env: payload.env,
-        });
-        return new Response(JSON.stringify(result), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      } catch (e) {
-        return new Response(
-          JSON.stringify({ error: e?.message ?? String(e) }),
-          { status: 500, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-    return new Response('Not found', { status: 404 });
+  routes: {
+    "/health": Response.json({ status: "ok" }),
+    "/run": {
+      POST: handleRun,
+    },
+  },
+  fetch(req) {
+    return Response.json({ error: "Not found" }, { status: 404 });
   },
 });
 
-console.log(\`TinyFlow server listening on port \${process.env.PORT || ${serverPort}}\`);
-`
-          : `const bundle = require('./${finalBundleFilename}');
-
-Bun.serve({
-  port: Number(process.env.PORT || ${serverPort}),
-  async fetch(req) {
-    const url = new URL(req.url);
-    if (req.method === 'POST' && url.pathname === '/run') {
-      try {
-        const payload = await req.json();
-        const result = await bundle.runFlow({
-          initialData: payload.initialData,
-          env: payload.env,
-        });
-        return new Response(JSON.stringify(result), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      } catch (e) {
-        return new Response(
-          JSON.stringify({ error: e?.message ?? String(e) }),
-          { status: 500, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-    return new Response('Not found', { status: 404 });
-  },
-});
-
-console.log(\`TinyFlow server listening on port \${process.env.PORT || ${serverPort}}\`);
+console.log(\`TinyFlow server listening on \${server.url}\`);
 `;
 
       files["server.js"] = serverCode;
