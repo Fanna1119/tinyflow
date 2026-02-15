@@ -12,6 +12,7 @@
  */
 
 import type { FunctionResult } from "../registry";
+import type { MiddlewareFunction } from "../middleware/types";
 
 /**
  * Mock value for testing - allows overriding node behavior
@@ -93,6 +94,8 @@ export interface SharedStore {
   debugCallbacks?: DebugCallbacks;
   /** Memory limits */
   memoryLimits?: MemoryLimits;
+  /** Resolved middleware functions (from flow.middleware IDs) */
+  middleware?: MiddlewareFunction[];
 }
 
 /**
@@ -114,6 +117,7 @@ export function createSharedStore(
     mockValues?: Map<string, MockValue>;
     debugCallbacks?: DebugCallbacks;
     memoryLimits?: MemoryLimits;
+    middleware?: MiddlewareFunction[];
   } = {},
 ): SharedStore {
   return {
@@ -124,6 +128,7 @@ export function createSharedStore(
     mockValues: options.mockValues,
     debugCallbacks: options.debugCallbacks,
     memoryLimits: { ...DEFAULT_LIMITS, ...options.memoryLimits },
+    middleware: options.middleware,
   };
 }
 

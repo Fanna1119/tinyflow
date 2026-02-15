@@ -325,8 +325,74 @@ const builtinFunctions = {
 ${functionEntries}
 };
 
+// Middleware compose helper — wraps a node function with middleware chain
+function composeMiddleware(middlewares, targetFn, functionId) {
+  if (!middlewares || middlewares.length === 0) return targetFn;
+  return async (params, context) => {
+    const mwCtx = { ...context, functionId, params: { ...params } };
+    let index = -1;
+    const dispatch = (i) => {
+      if (i <= index) return Promise.reject(new Error('next() called multiple times'));
+      index = i;
+      if (i < middlewares.length) {
+        return middlewares[i](mwCtx, () => dispatch(i + 1));
+      }
+      return targetFn(mwCtx.params, context);
+    };
+    return dispatch(0);
+  };
+}
+
+// Built-in middleware implementations (keyed by ID)
+const builtinMiddleware = {
+  'auth.tokenRequired': async (ctx, next) => {
+    const envKey = (ctx.params.tokenEnvKey) || 'API_TOKEN';
+    const token = ctx.env[envKey];
+    if (!token) {
+      ctx.log(\`[middleware] auth.tokenRequired: missing \${envKey}\`);
+      return { output: null, success: false, error: \`Authentication required: environment variable "\${envKey}" is not set\` };
+    }
+    return next();
+  },
+  'auth.envRequired': async (ctx, next) => {
+    const requiredKeys = ctx.params.requiredEnvVars ?? [];
+    const missing = requiredKeys.filter(k => !ctx.env[k]);
+    if (missing.length > 0) {
+      ctx.log(\`[middleware] auth.envRequired: missing env vars: \${missing.join(', ')}\`);
+      return { output: null, success: false, error: \`Missing required environment variables: \${missing.join(', ')}\` };
+    }
+    return next();
+  },
+  'logging.nodeTimer': async (ctx, next) => {
+    const start = Date.now();
+    const result = await next();
+    ctx.log(\`[middleware] \${ctx.nodeId} took \${Date.now() - start}ms\`);
+    return result;
+  },
+  'guard.readonlyStore': async (ctx, next) => {
+    const snapshot = new Map(ctx.store.entries());
+    const keysBefore = new Set(ctx.store.keys());
+    const result = await next();
+    for (const [k, v] of snapshot.entries()) ctx.store.set(k, v);
+    for (const k of ctx.store.keys()) { if (!keysBefore.has(k)) ctx.store.delete(k); }
+    return result;
+  },
+};
+
+// Resolve middleware IDs to executable functions
+function resolveMiddleware(ids, customMiddleware) {
+  if (!ids || ids.length === 0) return [];
+  const resolved = [];
+  for (const id of ids) {
+    const fn = customMiddleware?.[id] ?? builtinMiddleware[id];
+    if (fn) resolved.push(fn);
+    else console.warn(\`Middleware "\${id}" not found, skipping\`);
+  }
+  return resolved;
+}
+
 // Shared store helper
-function createSharedStore(initialData = {}, env = {}) {
+function createSharedStore(initialData = {}, env = {}, middleware = []) {
   return {
     data: new Map(Object.entries(initialData)),
     env,
@@ -336,6 +402,7 @@ function createSharedStore(initialData = {}, env = {}) {
     onLog: null,
     onNodeComplete: null,
     onError: null,
+    middleware,
   };
 }
 
@@ -365,9 +432,13 @@ class TFNode extends Node {
 
   async exec(config) {
     const shared = this._shared;
-    const fn = builtinFunctions[config.functionId];
+    let fn = builtinFunctions[config.functionId];
     if (!fn) {
       return { output: null, success: false, error: \`Function "\${config.functionId}" not found\` };
+    }
+    // Compose middleware around the function
+    if (shared.middleware && shared.middleware.length > 0) {
+      fn = composeMiddleware(shared.middleware, fn, config.functionId);
     }
     const ctx = {
       nodeId: config.id,
@@ -427,8 +498,11 @@ class TFBatchNode extends BatchNode {
   async exec(item) {
     const shared = this._shared;
     const processorId = this._nodeConfig.params?.processorFunction;
-    const fn = builtinFunctions[processorId];
+    let fn = builtinFunctions[processorId];
     if (!fn) return { output: null, success: false, error: \`Processor "\${processorId}" not found\` };
+    if (shared.middleware && shared.middleware.length > 0) {
+      fn = composeMiddleware(shared.middleware, fn, processorId);
+    }
     const ctx = {
       nodeId: this._nodeConfig.id,
       store: shared.data,
@@ -481,8 +555,11 @@ class TFParallelNode extends ParallelBatchNode {
   async exec(item) {
     const shared = this._shared;
     const processorId = this._nodeConfig.params?.processorFunction;
-    const fn = builtinFunctions[processorId];
+    let fn = builtinFunctions[processorId];
     if (!fn) return { output: null, success: false, error: \`Processor "\${processorId}" not found\` };
+    if (shared.middleware && shared.middleware.length > 0) {
+      fn = composeMiddleware(shared.middleware, fn, processorId);
+    }
     const ctx = {
       nodeId: this._nodeConfig.id,
       store: shared.data,
@@ -532,11 +609,14 @@ class TFClusterNode extends TFNode {
       const outputs = {};
       const subResults = await Promise.all(
         this._subNodeConfigs.map(async (subConfig) => {
-          const fn = builtinFunctions[subConfig.functionId];
+          let fn = builtinFunctions[subConfig.functionId];
           if (!fn) {
             const result = { output: null, success: false, error: \`Function "\${subConfig.functionId}" not found\` };
             shared.nodeResults.set(subConfig.id, result);
             return { nodeId: subConfig.id, result };
+          }
+          if (shared.middleware && shared.middleware.length > 0) {
+            fn = composeMiddleware(shared.middleware, fn, subConfig.functionId);
           }
           const ctx = {
             nodeId: subConfig.id,
@@ -659,9 +739,13 @@ ${
 // ---- Execute workflow using PocketFlow ----
 async function executeWorkflow(workflow, options = {}) {
   const startTime = Date.now();
-  const { initialData = {}, env = {}, onLog, onNodeComplete, onError } = options;
+  const { initialData = {}, env = {}, onLog, onNodeComplete, onError, middleware: customMiddleware } = options;
 
-  const shared = createSharedStore(initialData, env);
+  // Resolve middleware from workflow config + custom overrides
+  const middlewareIds = workflow.flow?.middleware ?? [];
+  const resolved = resolveMiddleware(middlewareIds, customMiddleware);
+
+  const shared = createSharedStore(initialData, env, resolved);
   shared.onLog = onLog ?? null;
   shared.onNodeComplete = onNodeComplete ?? null;
   shared.onError = onError ?? null;

@@ -172,6 +172,12 @@ export const workflowJsonSchema = {
           type: "object",
           additionalProperties: { type: "string" },
         },
+        middleware: {
+          type: "array",
+          items: { type: "string", minLength: 1 },
+          description:
+            "Ordered list of middleware IDs to run around each node execution",
+        },
       },
     },
     metadata: {

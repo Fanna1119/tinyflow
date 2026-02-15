@@ -109,6 +109,8 @@ export interface FlowConfig {
   runtime?: NodeRuntime;
   /** Global environment variables */
   envs?: Record<string, string>;
+  /** Ordered list of middleware IDs to run around each node execution */
+  middleware?: string[];
 }
 
 // ============================================================================

@@ -24,6 +24,7 @@ import {
   type ExecutionContext,
   type FunctionResult,
 } from "../registry";
+import { composeMiddleware } from "../middleware/composer";
 import { type SharedStore, enforceMemoryLimits, log } from "./shared";
 
 // ============================================================================
@@ -77,13 +78,18 @@ export class TinyFlowNode extends Node<SharedStore> {
     }
 
     // Get the registry function
-    const fn = registry.getExecutable(config.functionId);
+    let fn = registry.getExecutable(config.functionId);
     if (!fn) {
       return {
         output: null,
         success: false,
         error: `Function "${config.functionId}" not registered`,
       };
+    }
+
+    // Compose middleware around the function (if any)
+    if (shared.middleware && shared.middleware.length > 0) {
+      fn = composeMiddleware(shared.middleware, fn, config.functionId);
     }
 
     // Build execution context
@@ -192,13 +198,18 @@ export class TinyFlowBatchNode extends BatchNode<SharedStore> {
     const shared = this._shared!;
     const processorId = this.nodeConfig.params?.processorFunction as string;
 
-    const fn = registry.getExecutable(processorId);
+    let fn = registry.getExecutable(processorId);
     if (!fn) {
       return {
         output: null,
         success: false,
         error: `Processor "${processorId}" not found`,
       };
+    }
+
+    // Compose middleware around the processor function
+    if (shared.middleware && shared.middleware.length > 0) {
+      fn = composeMiddleware(shared.middleware, fn, processorId);
     }
 
     const context: ExecutionContext = {
@@ -300,13 +311,18 @@ export class TinyFlowParallelNode extends ParallelBatchNode<SharedStore> {
     const shared = this._shared!;
     const processorId = this.nodeConfig.params?.processorFunction as string;
 
-    const fn = registry.getExecutable(processorId);
+    let fn = registry.getExecutable(processorId);
     if (!fn) {
       return {
         output: null,
         success: false,
         error: `Processor "${processorId}" not found`,
       };
+    }
+
+    // Compose middleware around the processor function
+    if (shared.middleware && shared.middleware.length > 0) {
+      fn = composeMiddleware(shared.middleware, fn, processorId);
     }
 
     const context: ExecutionContext = {

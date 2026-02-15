@@ -19,6 +19,8 @@ import type {
 } from "../schema/types";
 import { validateWorkflow } from "../schema/validator";
 import { registry } from "../registry";
+import { composeMiddleware } from "../middleware/composer";
+import { middlewareRegistry } from "../middleware/registry";
 
 // Import from new PocketFlow integration layer
 import {
@@ -215,6 +217,12 @@ class ClusterNode extends TinyFlowNode {
       };
     }
 
+    // Compose middleware if present
+    const execFn =
+      shared.middleware && shared.middleware.length > 0
+        ? composeMiddleware(shared.middleware, fn, subConfig.functionId)
+        : fn;
+
     const context = {
       nodeId: subConfig.id,
       store: shared.data,
@@ -226,7 +234,7 @@ class ClusterNode extends TinyFlowNode {
     };
 
     try {
-      const result = await fn(subConfig.params, context);
+      const result = await execFn(subConfig.params, context);
       shared.nodeResults.set(subConfig.id, result);
       shared.debugCallbacks?.onNodeComplete?.(
         subConfig.id,
@@ -417,6 +425,7 @@ export function createStore(
   mockValues?: Map<string, MockValue>,
   debugCallbacks?: DebugCallbacks,
   memoryLimits?: MemoryLimits,
+  middleware?: import("../middleware/types").MiddlewareFunction[],
 ): CompiledStore {
   return createSharedStore({
     initialData,
@@ -424,6 +433,7 @@ export function createStore(
     mockValues,
     debugCallbacks,
     memoryLimits,
+    middleware,
   });
 }
 

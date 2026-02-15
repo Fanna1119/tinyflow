@@ -15,6 +15,7 @@ import {
   type DebugCallbacks,
   type NodeProfile,
 } from "../compiler";
+import { middlewareRegistry } from "../middleware/registry";
 
 // Re-export MockValue and NodeProfile for convenience
 export type { MockValue, NodeProfile } from "../compiler";
@@ -72,6 +73,7 @@ export class Runtime {
   private compiledFlow: Flow<CompiledStore> | null = null;
   private compilation: CompilationResult | null = null;
   private globalEnvs: Record<string, string> = {};
+  private workflowDef: WorkflowDefinition | null = null;
 
   constructor(globalEnvs: Record<string, string> = {}) {
     this.globalEnvs = globalEnvs;
@@ -81,6 +83,7 @@ export class Runtime {
    * Load a workflow definition
    */
   load(workflow: WorkflowDefinition): CompilationResult {
+    this.workflowDef = workflow;
     this.compilation = compileWorkflow(workflow, {
       globalEnvs: this.globalEnvs,
     });
@@ -96,6 +99,11 @@ export class Runtime {
    * Load workflow from JSON string
    */
   loadFromJson(json: string): CompilationResult {
+    try {
+      this.workflowDef = JSON.parse(json) as WorkflowDefinition;
+    } catch {
+      this.workflowDef = null;
+    }
     this.compilation = compileWorkflowFromJson(json, {
       globalEnvs: this.globalEnvs,
     });
@@ -216,6 +224,13 @@ export class Runtime {
     };
 
     // Create store with initial data, environment, mock values, and debug callbacks
+    // Resolve middleware from workflow definition
+    const middlewareIds = this.workflowDef?.flow?.middleware ?? [];
+    const resolvedMiddleware =
+      middlewareIds.length > 0
+        ? middlewareRegistry.resolve(middlewareIds)
+        : undefined;
+
     const store = createStore(
       options.initialData,
       {
@@ -225,6 +240,7 @@ export class Runtime {
       options.mockValues,
       debugCallbacks,
       options.memoryLimits,
+      resolvedMiddleware,
     );
 
     // Set up logging callback
