@@ -41,6 +41,7 @@ interface WorkflowSelection {
   endpointPath: string;
   methods: ("GET" | "POST" | "PUT" | "DELETE")[];
   included: boolean;
+  stream: boolean;
 }
 
 // ============================================================================
@@ -97,6 +98,7 @@ export function BundleModal({ isOpen, onClose, workflows }: BundleModalProps) {
           endpointPath: toEndpointPath(w.name),
           methods: ["POST"] as "POST"[],
           included: true,
+          stream: false,
         })),
       );
       setBuildError(null);
@@ -174,6 +176,7 @@ export function BundleModal({ isOpen, onClose, workflows }: BundleModalProps) {
           exportName: s.exportName,
           endpointPath: s.endpointPath,
           methods: s.methods,
+          stream: s.stream,
         };
       });
 
@@ -404,6 +407,29 @@ export function BundleModal({ isOpen, onClose, workflows }: BundleModalProps) {
                               </div>
                             </div>
                           )}
+                          {includeServer && (
+                            <div>
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={selection.stream}
+                                  onChange={(e) =>
+                                    updateSelection(wf.id, {
+                                      stream: e.target.checked,
+                                    })
+                                  }
+                                  className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                />
+                                <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                                  Stream response (NDJSON)
+                                </span>
+                              </label>
+                              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-6">
+                                Delivers results as newline-delimited JSON
+                                events instead of a single payload
+                              </p>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -554,6 +580,11 @@ export function BundleModal({ isOpen, onClose, workflows }: BundleModalProps) {
                           className="text-green-600 dark:text-green-400"
                         >
                           {s.methods.join("|")} {s.endpointPath}
+                          {s.stream && (
+                            <span className="ml-2 text-xs text-blue-500 dark:text-blue-400">
+                              [STREAM]
+                            </span>
+                          )}
                         </div>
                       ))}
                   </>
