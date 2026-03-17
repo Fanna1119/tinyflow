@@ -282,425 +282,20 @@ async function executeWorkflow(workflow, options = {}) {
 }
 
 /**
- * Generate PocketFlow-based runtime code
- *
- * Uses PocketFlow's Node, BatchNode, ParallelBatchNode, and Flow primitives
- * to build and execute the workflow graph. This gives bundles the same
- * retry, batch, parallel, and cluster semantics as the server runtime.
+ * Generate bundle runtime code — pending Flowneer integration
+ * @deprecated delegates to legacy runtime stub
  */
 function generatePocketFlowRuntimeCode(
   usedFunctions: Set<string>,
-  workflow: WorkflowDefinition,
+  _workflow: WorkflowDefinition,
 ): string {
-  const functionEntries = Array.from(usedFunctions)
-    .map((id) => {
-      const fnStr = getFunctionString(id);
-      return fnStr ? `  '${id}': ${fnStr}` : null;
-    })
-    .filter(Boolean)
-    .join(",\n");
-
-  // Detect batch/parallel function IDs used
-  const batchIds = ["control.batch"];
-  const parallelIds = ["control.parallel", "control.batchForEach"];
-  const needsBatch = batchIds.some((id) => usedFunctions.has(id));
-  const needsParallel = parallelIds.some((id) => usedFunctions.has(id));
-
-  // Detect clusters by scanning workflow nodes
-  const hasClusters = workflow.nodes.some((n) => n.nodeType === "clusterRoot");
-
-  // Only import the PocketFlow primitives that are actually needed
-  const pocketflowImports = ["Node", "Flow"];
-  if (needsBatch) pocketflowImports.push("BatchNode");
-  if (needsParallel) pocketflowImports.push("ParallelBatchNode");
-
-  return `import { ${pocketflowImports.join(", ")} } from 'pocketflow';
-
-// =============================================================================
-// PocketFlow Runtime (Embedded)
-// =============================================================================
-
-// Functions used by this workflow
-const builtinFunctions = {
-${functionEntries}
-};
-
-// Shared store helper
-function createSharedStore(initialData = {}, env = {}) {
-  return {
-    data: new Map(Object.entries(initialData)),
-    env,
-    logs: [],
-    nodeResults: new Map(),
-    lastError: null,
-    onLog: null,
-    onNodeComplete: null,
-    onError: null,
-  };
-}
-
-// Convert shared store to plain object
-function storeToObject(shared) {
-  const result = {};
-  shared.data.forEach((v, k) => { result[k] = v; });
-  return result;
-}
-
-// ---- PocketFlow Node: single step with retry ----
-class TFNode extends Node {
-  constructor(nodeConfig, flowEnvs = {}) {
-    super(
-      nodeConfig.runtime?.maxRetries ?? 1,
-      (nodeConfig.runtime?.retryDelay ?? 0) / 1000,
-    );
-    this._nodeConfig = nodeConfig;
-    this._flowEnvs = flowEnvs;
-    this._shared = null;
-  }
-
-  async prep(shared) {
-    this._shared = shared;
-    return this._nodeConfig;
-  }
-
-  async exec(config) {
-    const shared = this._shared;
-    const fn = builtinFunctions[config.functionId];
-    if (!fn) {
-      return { output: null, success: false, error: \`Function "\${config.functionId}" not found\` };
-    }
-    const ctx = {
-      nodeId: config.id,
-      store: shared.data,
-      env: { ...this._flowEnvs, ...config.envs },
-      log: (msg) => {
-        const fullMsg = \`[\${config.id}] \${msg}\`;
-        shared.logs.push(fullMsg);
-        if (shared.onLog) shared.onLog(fullMsg);
-      },
-    };
-    try {
-      return await fn(config.params, ctx);
-    } catch (e) {
-      return { output: null, success: false, error: e.message ?? 'Unknown error' };
-    }
-  }
-
-  async post(shared, _prepRes, execRes) {
-    const nodeId = this._nodeConfig.id;
-    shared.nodeResults.set(nodeId, execRes);
-    const status = execRes.success ? '✓' : '✗';
-    shared.logs.push(\`[\${status}] \${nodeId}: \${execRes.success ? 'completed' : execRes.error}\`);
-    if (!execRes.success) {
-      shared.lastError = { nodeId, error: execRes.error ?? 'Unknown error' };
-      if (shared.onError) shared.onError(nodeId, execRes.error ?? 'Unknown error');
-    }
-    if (shared.onNodeComplete) shared.onNodeComplete(nodeId, execRes.success, execRes.output ?? null);
-    const action = execRes.action ?? (execRes.success ? 'default' : 'error');
-    if (this._successors.has(action)) return action;
-    return 'default';
-  }
-}
-${
-  needsBatch
-    ? `
-// ---- PocketFlow BatchNode: sequential batch processing ----
-class TFBatchNode extends BatchNode {
-  constructor(nodeConfig, flowEnvs = {}) {
-    super(
-      nodeConfig.runtime?.maxRetries ?? 1,
-      (nodeConfig.runtime?.retryDelay ?? 0) / 1000,
-    );
-    this._nodeConfig = nodeConfig;
-    this._flowEnvs = flowEnvs;
-    this._shared = null;
-  }
-
-  async prep(shared) {
-    this._shared = shared;
-    const array = this._nodeConfig.params?.array;
-    if (!Array.isArray(array)) throw new Error('BatchNode: Expected array');
-    shared.logs.push(\`[\${this._nodeConfig.id}] Processing \${array.length} items sequentially\`);
-    return array;
-  }
-
-  async exec(item) {
-    const shared = this._shared;
-    const processorId = this._nodeConfig.params?.processorFunction;
-    const fn = builtinFunctions[processorId];
-    if (!fn) return { output: null, success: false, error: \`Processor "\${processorId}" not found\` };
-    const ctx = {
-      nodeId: this._nodeConfig.id,
-      store: shared.data,
-      env: { ...this._flowEnvs, ...this._nodeConfig.envs },
-      log: (msg) => { shared.logs.push(\`[\${this._nodeConfig.id}] \${msg}\`); },
-    };
-    try {
-      return await fn({ ...(this._nodeConfig.params?.processorParams ?? {}), currentItem: item }, ctx);
-    } catch (e) {
-      return { output: null, success: false, error: e.message ?? 'Unknown error' };
-    }
-  }
-
-  async post(shared, _prepRes, execRes) {
-    const nodeId = this._nodeConfig.id;
-    const outputKey = this._nodeConfig.params?.outputKey ?? 'batchResults';
-    const results = execRes.map(r => r.output);
-    shared.data.set(outputKey, results);
-    shared.nodeResults.set(nodeId, { output: results, success: execRes.every(r => r.success) });
-    const ok = execRes.filter(r => r.success).length;
-    shared.logs.push(\`[✓] \${nodeId}: Processed \${ok}/\${execRes.length} items\`);
-    return execRes.every(r => r.success) ? 'default' : 'error';
-  }
-}
-`
-    : ""
-}${
-    needsParallel
-      ? `
-// ---- PocketFlow ParallelBatchNode: parallel batch processing ----
-class TFParallelNode extends ParallelBatchNode {
-  constructor(nodeConfig, flowEnvs = {}) {
-    super(
-      nodeConfig.runtime?.maxRetries ?? 1,
-      (nodeConfig.runtime?.retryDelay ?? 0) / 1000,
-    );
-    this._nodeConfig = nodeConfig;
-    this._flowEnvs = flowEnvs;
-    this._shared = null;
-  }
-
-  async prep(shared) {
-    this._shared = shared;
-    const array = this._nodeConfig.params?.array;
-    if (!Array.isArray(array)) throw new Error('ParallelNode: Expected array');
-    shared.logs.push(\`[\${this._nodeConfig.id}] Processing \${array.length} items in parallel\`);
-    return array;
-  }
-
-  async exec(item) {
-    const shared = this._shared;
-    const processorId = this._nodeConfig.params?.processorFunction;
-    const fn = builtinFunctions[processorId];
-    if (!fn) return { output: null, success: false, error: \`Processor "\${processorId}" not found\` };
-    const ctx = {
-      nodeId: this._nodeConfig.id,
-      store: shared.data,
-      env: { ...this._flowEnvs, ...this._nodeConfig.envs },
-      log: (msg) => { shared.logs.push(\`[\${this._nodeConfig.id}] \${msg}\`); },
-    };
-    try {
-      return await fn({ ...(this._nodeConfig.params?.processorParams ?? {}), currentItem: item }, ctx);
-    } catch (e) {
-      return { output: null, success: false, error: e.message ?? 'Unknown error' };
-    }
-  }
-
-  async post(shared, _prepRes, execRes) {
-    const nodeId = this._nodeConfig.id;
-    const outputKey = this._nodeConfig.params?.outputKey ?? 'parallelResults';
-    const results = execRes.map(r => r.output);
-    shared.data.set(outputKey, results);
-    shared.nodeResults.set(nodeId, { output: results, success: execRes.every(r => r.success) });
-    const ok = execRes.filter(r => r.success).length;
-    shared.logs.push(\`[✓] \${nodeId}: Processed \${ok}/\${execRes.length} items in parallel\`);
-    return execRes.every(r => r.success) ? 'default' : 'error';
-  }
-}
-`
-      : ""
-  }${
-    hasClusters
-      ? `
-// ---- Cluster Node: executes root function then runs sub-nodes in parallel ----
-class TFClusterNode extends TFNode {
-  constructor(nodeConfig, subNodeConfigs, flowEnvs = {}) {
-    super(nodeConfig, flowEnvs);
-    this._subNodeConfigs = subNodeConfigs;
-  }
-
-  async exec(config) {
-    // First execute the cluster root's own function
-    const rootResult = await super.exec(config);
-    if (!rootResult.success) return rootResult;
-
-    // Then execute all sub-nodes in parallel
-    if (this._subNodeConfigs.length > 0) {
-      const shared = this._shared;
-      shared.logs.push(\`[\${config.id}] Executing \${this._subNodeConfigs.length} sub-nodes in parallel\`);
-
-      const outputs = {};
-      const subResults = await Promise.all(
-        this._subNodeConfigs.map(async (subConfig) => {
-          const fn = builtinFunctions[subConfig.functionId];
-          if (!fn) {
-            const result = { output: null, success: false, error: \`Function "\${subConfig.functionId}" not found\` };
-            shared.nodeResults.set(subConfig.id, result);
-            return { nodeId: subConfig.id, result };
-          }
-          const ctx = {
-            nodeId: subConfig.id,
-            store: shared.data,
-            env: { ...this._flowEnvs, ...subConfig.envs },
-            log: (msg) => { shared.logs.push(\`[\${subConfig.id}] \${msg}\`); },
-          };
-          try {
-            const result = await fn(subConfig.params, ctx);
-            shared.nodeResults.set(subConfig.id, result);
-            shared.logs.push(\`[\${result.success ? '✓' : '✗'}] \${subConfig.id}: \${result.success ? 'completed' : result.error}\`);
-            return { nodeId: subConfig.id, result };
-          } catch (e) {
-            const result = { output: null, success: false, error: e.message ?? 'Unknown error' };
-            shared.nodeResults.set(subConfig.id, result);
-            shared.logs.push(\`[✗] \${subConfig.id}: \${result.error}\`);
-            return { nodeId: subConfig.id, result };
-          }
-        }),
-      );
-
-      for (const { nodeId, result } of subResults) {
-        outputs[nodeId] = result.output;
-      }
-
-      // Store cluster outputs so downstream nodes can access them
-      const existing = shared.data.get('_clusterOutputs') ?? {};
-      shared.data.set('_clusterOutputs', { ...existing, [config.id]: outputs });
-    }
-
-    return rootResult;
-  }
-}
-`
-      : ""
-  }
-// ---- Build PocketFlow graph from workflow JSON ----
-function buildFlow(workflow, env = {}) {
-  const flowEnvs = { ...workflow.flow?.envs, ...env };
-  const batchIds = ['control.batch'];
-  const parallelIds = ['control.parallel', 'control.batchForEach'];
-${
-  hasClusters
-    ? `
-  // Identify cluster roots and sub-nodes
-  const clusterRoots = new Set();
-  const subNodes = new Set();
-  const subNodesByParent = new Map();
-
-  for (const nodeDef of workflow.nodes) {
-    if (nodeDef.nodeType === 'clusterRoot') {
-      clusterRoots.add(nodeDef.id);
-      subNodesByParent.set(nodeDef.id, []);
-    } else if (nodeDef.nodeType === 'subNode' && nodeDef.parentId) {
-      subNodes.add(nodeDef.id);
-      const siblings = subNodesByParent.get(nodeDef.parentId) ?? [];
-      siblings.push(nodeDef);
-      subNodesByParent.set(nodeDef.parentId, siblings);
-    }
-  }
-
-  // Create nodes (skip sub-nodes — they are owned by their cluster)
-  const nodeMap = new Map();
-  for (const nodeDef of workflow.nodes) {
-    if (subNodes.has(nodeDef.id)) continue;
-
-    let node;
-    if (clusterRoots.has(nodeDef.id)) {
-      const children = subNodesByParent.get(nodeDef.id) ?? [];
-      node = new TFClusterNode(nodeDef, children, flowEnvs);
-    } else if (batchIds.includes(nodeDef.functionId)) {
-      ${needsBatch ? "node = new TFBatchNode(nodeDef, flowEnvs);" : "node = new TFNode(nodeDef, flowEnvs);"}
-    } else if (parallelIds.includes(nodeDef.functionId)) {
-      ${needsParallel ? "node = new TFParallelNode(nodeDef, flowEnvs);" : "node = new TFNode(nodeDef, flowEnvs);"}
-    } else {
-      node = new TFNode(nodeDef, flowEnvs);
-    }
-    nodeMap.set(nodeDef.id, node);
-  }
-
-  // Wire edges (skip sub-node edges — they are internal to clusters)
-  for (const edge of workflow.edges) {
-    if (edge.edgeType === 'subnode') continue;
-    if (subNodes.has(edge.from)) continue;
-
-    const from = nodeMap.get(edge.from);
-    const to = nodeMap.get(edge.to);
-    if (from && to) from.on(edge.action, to);
-  }
-`
-    : `
-  // Create nodes
-  const nodeMap = new Map();
-  for (const nodeDef of workflow.nodes) {
-    let node;
-    if (batchIds.includes(nodeDef.functionId)) {
-      ${needsBatch ? "node = new TFBatchNode(nodeDef, flowEnvs);" : "node = new TFNode(nodeDef, flowEnvs);"}
-    } else if (parallelIds.includes(nodeDef.functionId)) {
-      ${needsParallel ? "node = new TFParallelNode(nodeDef, flowEnvs);" : "node = new TFNode(nodeDef, flowEnvs);"}
-    } else {
-      node = new TFNode(nodeDef, flowEnvs);
-    }
-    nodeMap.set(nodeDef.id, node);
-  }
-
-  // Wire edges
-  for (const edge of workflow.edges) {
-    const from = nodeMap.get(edge.from);
-    const to = nodeMap.get(edge.to);
-    if (from && to) from.on(edge.action, to);
-  }
-`
-}
-  // Create Flow
-  const startNode = nodeMap.get(workflow.flow.startNodeId);
-  if (!startNode) throw new Error(\`Start node "\${workflow.flow.startNodeId}" not found\`);
-  return new Flow(startNode);
-}
-
-// ---- Execute workflow using PocketFlow ----
-async function executeWorkflow(workflow, options = {}) {
-  const startTime = Date.now();
-  const { initialData = {}, env = {}, onLog, onNodeComplete, onError } = options;
-
-  const shared = createSharedStore(initialData, env);
-  shared.onLog = onLog ?? null;
-  shared.onNodeComplete = onNodeComplete ?? null;
-  shared.onError = onError ?? null;
-  const flow = buildFlow(workflow, env);
-
-  try {
-    await flow.run(shared);
-  } catch (e) {
-    const error = shared.lastError ?? { nodeId: '', message: e.message ?? 'Unknown error' };
-    if (onError) onError(error.nodeId, error.message ?? error.error);
-    return {
-      success: false,
-      data: storeToObject(shared),
-      logs: shared.logs,
-      error: { nodeId: error.nodeId, message: error.message ?? error.error },
-      duration: Date.now() - startTime,
-    };
-  }
-
-  return {
-    success: !shared.lastError,
-    data: storeToObject(shared),
-    logs: shared.logs,
-    error: shared.lastError
-      ? { nodeId: shared.lastError.nodeId, message: shared.lastError.error }
-      : undefined,
-    duration: Date.now() - startTime,
-  };
-}
-`;
+  return _generateLegacyRuntimeCode(usedFunctions);
 }
 
 /**
  * Generate ESM bundle code
- *
- * Always uses PocketFlow as the execution engine. The `includeRuntime`
- * option is kept for backward compatibility but both paths now depend
- * on the `pocketflow` npm package.
  */
+
 function generateESMBundle(
   workflow: WorkflowDefinition,
   defaultEnv: Record<string, string>,
@@ -787,12 +382,6 @@ function generateCJSBundle(
 
   // Convert ESM exports to CJS
   let cjsCode = esmCode;
-
-  // Replace PocketFlow ESM import with require
-  cjsCode = cjsCode.replace(
-    /^import \{([^}]+)\} from 'pocketflow';/m,
-    (_, imports) => `const {${imports}} = require('pocketflow');`,
-  );
 
   // Replace ESM exports
   cjsCode = cjsCode.replace(/^export async function/gm, "async function");
@@ -1276,10 +865,8 @@ services:
     }
 
     // Collect runtime dependencies from used functions and emit package.json
-    // Always include pocketflow since bundles use PocketFlow as the execution engine
     const usedFunctions = getUsedFunctionIds(workflow);
     const runtimeDeps = collectRuntimeDependencies(usedFunctions);
-    runtimeDeps["pocketflow"] = "^1.0.4";
     files["package.json"] = generateBundlePackageJson(
       workflow.name,
       runtimeDeps,
@@ -1420,7 +1007,6 @@ services:
     }
 
     // Collect runtime dependencies from all workflows and emit package.json
-    // Always include pocketflow since bundles use PocketFlow as the execution engine
     const allUsedFunctions = new Set<string>();
     for (const entry of workflows) {
       for (const fnId of getUsedFunctionIds(entry.workflow)) {
@@ -1428,7 +1014,6 @@ services:
       }
     }
     const runtimeDeps = collectRuntimeDependencies(allUsedFunctions);
-    runtimeDeps["pocketflow"] = "^1.0.4";
     const combinedName = workflows.map((w) => w.workflow.name).join("-");
     files["package.json"] = generateBundlePackageJson(
       combinedName,

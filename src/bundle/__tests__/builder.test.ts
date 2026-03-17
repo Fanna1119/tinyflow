@@ -98,7 +98,7 @@ describe("buildBundle", () => {
       expect(result.code).toContain("production");
     });
 
-    it("should always use PocketFlow even when includeRuntime is false", async () => {
+    it("should generate ESM bundle when includeRuntime is false", async () => {
       const workflow = createTestWorkflow();
       const result = await buildBundle({
         workflow,
@@ -107,12 +107,8 @@ describe("buildBundle", () => {
       });
 
       expect(result.success).toBe(true);
-      // Should import from pocketflow, not tinyflow
-      expect(result.code).toContain("from 'pocketflow'");
       expect(result.code).not.toContain("from 'tinyflow'");
       expect(result.code).not.toContain("class TinyFlowStore");
-      // Should have PocketFlow Node subclass
-      expect(result.code).toContain("class TFNode extends Node");
     });
   });
 
@@ -127,7 +123,7 @@ describe("buildBundle", () => {
       expect(result.code).not.toContain("export async function");
     });
 
-    it("should use require('pocketflow') in CJS format", async () => {
+    it("should generate CJS bundle format", async () => {
       const workflow = createTestWorkflow();
       const result = await buildBundle({
         workflow,
@@ -135,7 +131,7 @@ describe("buildBundle", () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.code).toContain("require('pocketflow')");
+      expect(result.code).toContain("module.exports");
       expect(result.code).not.toContain("require('tinyflow')");
     });
   });
@@ -544,7 +540,7 @@ describe("bundle package.json emission", () => {
     }
   });
 
-  it("should always emit package.json with pocketflow dependency", async () => {
+  it("should always emit package.json", async () => {
     const workflow: WorkflowDefinition = {
       id: "simple",
       name: "Simple",
@@ -570,10 +566,9 @@ describe("bundle package.json emission", () => {
     const result = await buildBundle({ workflow, format: "esm" });
     expect(result.success).toBe(true);
     expect(result.files).toBeDefined();
-    // package.json should always be emitted with pocketflow
     expect(result.files!["package.json"]).toBeDefined();
     const pkg = JSON.parse(result.files!["package.json"]);
-    expect(pkg.dependencies.pocketflow).toBe("^1.0.4");
+    expect(pkg.dependencies).toBeDefined();
   });
 
   it("should emit package.json when workflow uses functions with runtime deps", async () => {
@@ -615,7 +610,6 @@ describe("bundle package.json emission", () => {
     const pkg = JSON.parse(result.files!["package.json"]);
     expect(pkg.dependencies).toBeDefined();
     expect(pkg.dependencies.openai).toBe("^4.0.0");
-    expect(pkg.dependencies.pocketflow).toBe("^1.0.4");
     expect(pkg.private).toBe(true);
     expect(pkg.name).toContain("llm-flow");
   });
@@ -700,7 +694,6 @@ describe("bundle package.json emission", () => {
 
     const pkg = JSON.parse(result.files!["package.json"]);
     expect(pkg.dependencies.openai).toBe("^4.0.0");
-    expect(pkg.dependencies.pocketflow).toBe("^1.0.4");
   });
 });
 
@@ -847,8 +840,6 @@ describe("cluster bundle generation", () => {
     const result = await buildBundle({ workflow, format: "cjs" });
 
     expect(result.success).toBe(true);
-    expect(result.code).toContain("require('pocketflow')");
-    expect(result.code).toContain("class TFClusterNode extends TFNode");
     expect(result.code).toContain("module.exports");
   });
 

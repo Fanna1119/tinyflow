@@ -57,7 +57,7 @@ interface NodeEvent {
   output?: unknown;
   message?: string;
   sessionId?: string;
-  profile?: import("../pocketflow/shared").NodeProfile;
+  profile?: Record<string, unknown>;
   result?: {
     success: boolean;
     logs: string[];
